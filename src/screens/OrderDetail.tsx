@@ -43,6 +43,8 @@ export function OrderDetail() {
   const [voidConfirmOpen, setVoidConfirmOpen] = useState(false);
   const [draftLines, setDraftLines] = useState<OrderDraftLine[]>([]);
   const [editError, setEditError] = useState<string | null>(null);
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [voiding, setVoiding] = useState(false);
 
   if (!order) {
     return <Card className="py-10 text-center text-warmgray-500">ไม่พบออเดอร์นี้</Card>;
@@ -96,20 +98,33 @@ export function OrderDetail() {
   }
 
   async function saveEdit() {
-    const result = await submitEditOrder(order!.id, { lines: draftLines });
-    if (!result.ok) {
-      // BUSINESS_RULES.md §16 step 6 / CALCULATION_ENGINE.md §15: failed re-allocation rolls
-      // back atomically — the order shown below is unchanged because the store only updates
-      // on success.
-      setEditError('สต๊อกไม่พอสำหรับการแก้ไขนี้ ออเดอร์เดิมยังคงอยู่โดยไม่เปลี่ยนแปลง');
-      return;
+    if (savingEdit) return;
+    setSavingEdit(true);
+    setEditError(null);
+    try {
+      const result = await submitEditOrder(order!.id, { lines: draftLines });
+      if (!result.ok) {
+        // BUSINESS_RULES.md §16 step 6 / CALCULATION_ENGINE.md §15: failed re-allocation rolls
+        // back atomically — the order shown below is unchanged because the store only updates
+        // on success.
+        setEditError('สต๊อกไม่พอสำหรับการแก้ไขนี้ ออเดอร์เดิมยังคงอยู่โดยไม่เปลี่ยนแปลง');
+        return;
+      }
+      setEditing(false);
+    } finally {
+      setSavingEdit(false);
     }
-    setEditing(false);
   }
 
   async function confirmVoid() {
-    await submitVoidOrder(order!.id);
-    setVoidConfirmOpen(false);
+    if (voiding) return;
+    setVoiding(true);
+    try {
+      await submitVoidOrder(order!.id);
+      setVoidConfirmOpen(false);
+    } finally {
+      setVoiding(false);
+    }
   }
 
   return (
@@ -267,11 +282,11 @@ export function OrderDetail() {
           {editError && <Card className="border-danger-500/40 bg-danger-50/40 text-sm text-danger-700">{editError}</Card>}
 
           <div className="flex justify-end gap-2">
-            <Button variant="secondary" onClick={() => setEditing(false)}>
+            <Button variant="secondary" onClick={() => setEditing(false)} disabled={savingEdit}>
               ยกเลิก
             </Button>
-            <Button onClick={saveEdit} disabled={!preview?.ok}>
-              บันทึกการแก้ไข
+            <Button onClick={saveEdit} disabled={!preview?.ok || savingEdit}>
+              {savingEdit ? 'กำลังบันทึก...' : 'บันทึกการแก้ไข'}
             </Button>
           </div>
         </div>
@@ -283,11 +298,11 @@ export function OrderDetail() {
         title="ยืนยันการยกเลิกออเดอร์"
         footer={
           <>
-            <Button variant="secondary" onClick={() => setVoidConfirmOpen(false)}>
+            <Button variant="secondary" onClick={() => setVoidConfirmOpen(false)} disabled={voiding}>
               ไม่ยกเลิก
             </Button>
-            <Button variant="danger" onClick={confirmVoid}>
-              ยืนยันยกเลิกออเดอร์
+            <Button variant="danger" onClick={confirmVoid} disabled={voiding}>
+              {voiding ? 'กำลังยกเลิก...' : 'ยืนยันยกเลิกออเดอร์'}
             </Button>
           </>
         }

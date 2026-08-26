@@ -13,28 +13,48 @@ import type { RepositorySnapshot, CatalogResult } from './mockRepository';
 import type { OrderResult } from '@/domain/orderEngine';
 import type { RepositoryContract } from './contract';
 
+let unauthenticatedHandler: (() => void) | null = null;
+export function setUnauthenticatedHandler(fn: (() => void) | null) {
+  unauthenticatedHandler = fn;
+}
+
+function isUnauthenticated(res: Response, body: unknown): boolean {
+  const b = body as { error?: { code?: string } } | null;
+  return res.status === 401 || b?.error?.code === 'UNAUTHENTICATED';
+}
+
 async function catalogCall<T>(path: string, init?: RequestInit): Promise<CatalogResult<T>> {
-  const res = await fetch(path, { headers: { 'Content-Type': 'application/json' }, ...init });
+  const res = await fetch(path, { headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', ...init });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
-    const errors: string[] = body?.error?.details?.errors ?? [body?.error?.message ?? 'เกิดข้อผิดพลาดที่ไม่ทราบสาเหตุ'];
+    if (isUnauthenticated(res, body)) unauthenticatedHandler?.();
+    const errors: string[] = (body as { error?: { details?: { errors?: string[] }; message?: string } })?.error?.details?.errors ??
+      [(body as { error?: { message?: string } })?.error?.message ?? 'เกิดข้อผิดพลาดที่ไม่ทราบสาเหตุ'];
     return { ok: false, errors };
   }
   return { ok: true, item: body as T };
 }
 
 async function orderCall(path: string, init?: RequestInit): Promise<OrderResult> {
-  const res = await fetch(path, { headers: { 'Content-Type': 'application/json' }, ...init });
+  const res = await fetch(path, { headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', ...init });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
-    return { ok: false, shortages: body?.error?.details?.shortages ?? [] };
+    if (isUnauthenticated(res, body)) unauthenticatedHandler?.();
+    return { ok: false, shortages: (body as { error?: { details?: { shortages?: [] } } })?.error?.details?.shortages ?? [] };
   }
   return { ok: true, order: body as Order };
 }
 
 async function getSnapshot(): Promise<RepositorySnapshot> {
-  const res = await fetch('/api/snapshot');
-  if (!res.ok) throw new Error(`GET /api/snapshot failed: ${res.status}`);
+  const res = await fetch('/api/snapshot', { credentials: 'same-origin' });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    if (isUnauthenticated(res, body)) {
+      unauthenticatedHandler?.();
+      throw new Error('UNAUTHENTICATED');
+    }
+    throw new Error(`GET /api/snapshot failed: ${res.status}`);
+  }
   return res.json();
 }
 

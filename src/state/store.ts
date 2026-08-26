@@ -70,7 +70,19 @@ async function refreshSnapshot(set: (partial: Partial<AppState>) => void) {
     const snapshot = await repository.getSnapshot();
     set({ ...snapshot, refreshError: null });
   } catch (e) {
-    set({ refreshError: e instanceof Error ? e.message : 'ไม่สามารถโหลดข้อมูลล่าสุดได้' });
+    const msg = e instanceof Error ? e.message : String(e);
+    // 401 must drive auth transition, not a generic banner — apiRepository's unauth handler
+    // already flips authStore, but keep fallback for non-apiRepository paths and avoid noise.
+    if (msg === 'UNAUTHENTICATED' || msg.includes('401')) {
+      try {
+        const { useAuthStore } = await import('@/state/authStore');
+        useAuthStore.setState({ status: 'unauthenticated', username: null });
+      } catch {
+        // ignore dynamic-import failure — App.tsx gate will still see 401 via handler
+      }
+      return;
+    }
+    set({ refreshError: msg || 'ไม่สามารถโหลดข้อมูลล่าสุดได้' });
   }
 }
 

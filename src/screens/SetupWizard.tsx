@@ -25,6 +25,7 @@ export function SetupWizard({ onComplete }: { onComplete: () => void }) {
     const res = await fetch('/api/setup/complete', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
       body: JSON.stringify({ name }),
     });
     setSubmitting(false);

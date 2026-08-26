@@ -19,6 +19,7 @@ import { Login } from '@/screens/Login';
 import { SetupWizard } from '@/screens/SetupWizard';
 import { useAuthStore } from '@/state/authStore';
 import { useAppStore, loadInitialSnapshot } from '@/state/store';
+import { setUnauthenticatedHandler } from '@/repository/apiRepository';
 
 function LoadingScreen() {
   return <div className="flex min-h-screen items-center justify-center bg-warmgray-50 text-warmgray-500">กำลังโหลด...</div>;
@@ -33,6 +34,14 @@ export default function App() {
   const checkSession = useAuthStore((s) => s.checkSession);
   const loading = useAppStore((s) => s.loading);
   const setupComplete = useAppStore((s) => s.store.setupComplete);
+
+  useEffect(() => {
+    // Any 401 from the real API repository must drive the app back to Login — not a generic
+    // banner. ApiRepository cannot import the store directly (circular), so App registers the
+    // callback once. Mock repository never triggers it.
+    setUnauthenticatedHandler(() => useAuthStore.setState({ status: 'unauthenticated', username: null }));
+    return () => setUnauthenticatedHandler(null);
+  }, []);
 
   useEffect(() => {
     checkSession();

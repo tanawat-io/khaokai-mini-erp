@@ -24,6 +24,7 @@ export function Waste() {
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState<WasteInput>(emptyForm('', false));
   const [errors, setErrors] = useState<string[]>([]);
+  const [saving, setSaving] = useState(false);
 
   const ingredientById = useMemo(() => new Map(ingredients.map((i) => [i.id, i])), [ingredients]);
 
@@ -82,17 +83,23 @@ export function Waste() {
   }
 
   async function handleSave() {
+    if (saving) return;
     const check = validateWasteInput(form, selectedLot, standardCostAvailable);
     if (!check.ok) {
       setErrors(check.errors);
       return;
     }
-    const result = await submitRecordWaste(form);
-    if (!result.ok) {
-      setErrors(result.errors ?? ['บันทึกไม่สำเร็จ']);
-      return;
+    setSaving(true);
+    try {
+      const result = await submitRecordWaste(form);
+      if (!result.ok) {
+        setErrors(result.errors ?? ['บันทึกไม่สำเร็จ']);
+        return;
+      }
+      closeForm();
+    } finally {
+      setSaving(false);
     }
-    closeForm();
   }
 
   const wasteValuePreview = isStandardCost
@@ -264,11 +271,11 @@ export function Waste() {
             )}
 
             <div className="flex justify-end gap-2 pt-1">
-              <Button variant="secondary" onClick={closeForm}>
+              <Button variant="secondary" onClick={closeForm} disabled={saving}>
                 ยกเลิก
               </Button>
-              <Button variant="danger" onClick={handleSave} disabled={!canSave}>
-                บันทึกของเสีย
+              <Button variant="danger" onClick={handleSave} disabled={!canSave || saving}>
+                {saving ? 'กำลังบันทึก...' : 'บันทึกของเสีย'}
               </Button>
             </div>
           </div>

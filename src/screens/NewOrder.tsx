@@ -20,6 +20,7 @@ export function NewOrder() {
   const [lines, setLines] = useState<OrderDraftLine[]>([]);
   const [pickerMenuId, setPickerMenuId] = useState(activeMenus[0]?.id ?? '');
   const [confirmError, setConfirmError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   const ingredientNameById = useMemo(() => new Map(ingredients.map((i) => [i.id, i.name])), [ingredients]);
   const menuById = useMemo(() => new Map(menus.map((m) => [m.id, m])), [menus]);
@@ -67,13 +68,19 @@ export function NewOrder() {
   }
 
   async function handleConfirm() {
-    if (lines.length === 0) return;
-    const result = await submitNewOrder(draft);
-    if (!result.ok) {
-      setConfirmError('สต๊อกไม่พอ ไม่สามารถยืนยันออเดอร์ได้');
-      return;
+    if (lines.length === 0 || submitting) return;
+    setSubmitting(true);
+    setConfirmError(null);
+    try {
+      const result = await submitNewOrder(draft);
+      if (!result.ok) {
+        setConfirmError('สต๊อกไม่พอ ไม่สามารถยืนยันออเดอร์ได้');
+        return;
+      }
+      navigate(`/orders/${result.orderId}`);
+    } finally {
+      setSubmitting(false);
     }
-    navigate(`/orders/${result.orderId}`);
   }
 
   return (
@@ -182,8 +189,8 @@ export function NewOrder() {
               กำไรโดยประมาณ ฿{formatBaht(preview.totalProfit)}
             </div>
           </div>
-          <Button onClick={handleConfirm} disabled={lines.length === 0 || !preview.ok} size="md">
-            ยืนยันออเดอร์
+          <Button onClick={handleConfirm} disabled={lines.length === 0 || !preview.ok || submitting} size="md">
+            {submitting ? 'กำลังบันทึก...' : 'ยืนยันออเดอร์'}
           </Button>
         </div>
         {!preview.ok && lines.length > 0 && (

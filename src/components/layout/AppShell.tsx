@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useAppStore } from '@/state/store';
+import { ErrorBanner } from '@/components/ui/ErrorBanner';
 
 const navItems = [
   { to: '/', label: 'หน้าหลัก', icon: '🏠', end: true },
@@ -11,6 +12,7 @@ const navItems = [
 
 export function AppShell({ children }: { children: ReactNode }) {
   const storeName = useAppStore((s) => s.store.name);
+  const refreshError = useAppStore((s) => s.refreshError);
   return (
     <div className="min-h-screen bg-warmgray-50 md:flex">
       {/* Desktop sidebar */}
@@ -49,7 +51,12 @@ export function AppShell({ children }: { children: ReactNode }) {
       {/* Main content */}
       <div className="flex min-h-screen flex-1 flex-col">
         <main className="flex-1 px-4 pb-24 pt-4 md:px-8 md:pb-8 md:pt-8">
-          <div className="mx-auto w-full max-w-5xl">{children}</div>
+          <div className="mx-auto w-full max-w-5xl space-y-4">
+            {refreshError && (
+              <ErrorBanner message={refreshError} onDismiss={() => useAppStore.setState({ refreshError: null })} />
+            )}
+            <div>{children}</div>
+          </div>
         </main>
       </div>
 

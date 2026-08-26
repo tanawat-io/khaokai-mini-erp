@@ -15,6 +15,7 @@ export function Menus() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<CatalogItemInput>(emptyInput);
   const [errors, setErrors] = useState<string[]>([]);
+  const [saving, setSaving] = useState(false);
 
   const ingredientsById = useMemo(() => new Map(ingredients.map((i) => [i.id, i])), [ingredients]);
   const activeIngredients = useMemo(() => ingredients.filter((i) => i.active), [ingredients]);
@@ -46,17 +47,23 @@ export function Menus() {
   }
 
   async function handleSave() {
+    if (saving) return;
     const check = validateCatalogItemInput(form, ingredientsById);
     if (!check.ok) {
       setErrors(check.errors);
       return;
     }
-    const result = editingId ? await submitUpdateMenu(editingId, form) : await submitCreateMenu(form);
-    if (!result.ok) {
-      setErrors(result.errors ?? ['บันทึกไม่สำเร็จ']);
-      return;
+    setSaving(true);
+    try {
+      const result = editingId ? await submitUpdateMenu(editingId, form) : await submitCreateMenu(form);
+      if (!result.ok) {
+        setErrors(result.errors ?? ['บันทึกไม่สำเร็จ']);
+        return;
+      }
+      closeForm();
+    } finally {
+      setSaving(false);
     }
-    closeForm();
   }
 
   return (
@@ -188,10 +195,10 @@ export function Menus() {
                 )}
               </div>
               <div className="flex gap-2">
-                <Button variant="secondary" onClick={closeForm}>
+                <Button variant="secondary" onClick={closeForm} disabled={saving}>
                   ยกเลิก
                 </Button>
-                <Button onClick={handleSave}>บันทึก</Button>
+                <Button onClick={handleSave} disabled={saving}>{saving ? 'กำลังบันทึก...' : 'บันทึก'}</Button>
               </div>
             </div>
           </div>

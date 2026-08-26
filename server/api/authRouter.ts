@@ -10,6 +10,7 @@ const COOKIE_OPTIONS = {
   httpOnly: true,
   sameSite: 'lax' as const,
   path: '/',
+  secure: process.env.NODE_ENV === 'production',
 };
 
 authRouter.post('/login', async (req, res) => {

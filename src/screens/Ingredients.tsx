@@ -21,6 +21,7 @@ export function Ingredients() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<IngredientInput>(emptyInput);
   const [errors, setErrors] = useState<string[]>([]);
+  const [saving, setSaving] = useState(false);
 
   const sorted = useMemo(() => [...ingredients].sort((a, b) => a.name.localeCompare(b.name, 'th')), [ingredients]);
 
@@ -54,17 +55,23 @@ export function Ingredients() {
   }
 
   async function handleSave() {
+    if (saving) return;
     const check = validateIngredientInput(form);
     if (!check.ok) {
       setErrors(check.errors);
       return;
     }
-    const result = editingId ? await submitUpdateIngredient(editingId, form) : await submitCreateIngredient(form);
-    if (!result.ok) {
-      setErrors(result.errors ?? ['บันทึกไม่สำเร็จ']);
-      return;
+    setSaving(true);
+    try {
+      const result = editingId ? await submitUpdateIngredient(editingId, form) : await submitCreateIngredient(form);
+      if (!result.ok) {
+        setErrors(result.errors ?? ['บันทึกไม่สำเร็จ']);
+        return;
+      }
+      closeForm();
+    } finally {
+      setSaving(false);
     }
-    closeForm();
   }
 
   return (
@@ -215,10 +222,10 @@ export function Ingredients() {
                 )}
               </div>
               <div className="flex gap-2">
-                <Button variant="secondary" onClick={closeForm}>
+                <Button variant="secondary" onClick={closeForm} disabled={saving}>
                   ยกเลิก
                 </Button>
-                <Button onClick={handleSave}>บันทึก</Button>
+                <Button onClick={handleSave} disabled={saving}>{saving ? 'กำลังบันทึก...' : 'บันทึก'}</Button>
               </div>
             </div>
           </div>

@@ -19,6 +19,7 @@ export function Purchases() {
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState<PurchaseInput>(() => emptyInput(ingredients[0]?.id ?? '', ingredients[0]?.baseUnit ?? ''));
   const [errors, setErrors] = useState<string[]>([]);
+  const [saving, setSaving] = useState(false);
 
   const ingredientNameById = useMemo(() => new Map(ingredients.map((i) => [i.id, i.name])), [ingredients]);
   const ingredientsById = useMemo(() => new Map(ingredients.map((i) => [i.id, i])), [ingredients]);
@@ -41,17 +42,23 @@ export function Purchases() {
   }
 
   async function handleSave() {
+    if (saving) return;
     const check = validatePurchaseInput(form, ingredientsById);
     if (!check.ok) {
       setErrors(check.errors);
       return;
     }
-    const result = await submitCreatePurchase(form);
-    if (!result.ok) {
-      setErrors(result.errors ?? ['บันทึกไม่สำเร็จ']);
-      return;
+    setSaving(true);
+    try {
+      const result = await submitCreatePurchase(form);
+      if (!result.ok) {
+        setErrors(result.errors ?? ['บันทึกไม่สำเร็จ']);
+        return;
+      }
+      closeForm();
+    } finally {
+      setSaving(false);
     }
-    closeForm();
   }
 
   const unitCostPreview = form.quantity > 0 ? form.totalCost / form.quantity : 0;
@@ -223,10 +230,10 @@ export function Purchases() {
             )}
 
             <div className="flex justify-end gap-2 pt-1">
-              <Button variant="secondary" onClick={closeForm}>
+              <Button variant="secondary" onClick={closeForm} disabled={saving}>
                 ยกเลิก
               </Button>
-              <Button onClick={handleSave}>บันทึก</Button>
+              <Button onClick={handleSave} disabled={saving}>{saving ? 'กำลังบันทึก...' : 'บันทึก'}</Button>
             </div>
           </div>
         </Card>

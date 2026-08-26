@@ -8,20 +8,27 @@ export function Settings() {
   const [name, setName] = useState(store.name);
   const [errors, setErrors] = useState<string[]>([]);
   const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     setName(store.name);
   }, [store.name]);
 
   async function handleSave() {
+    if (saving) return;
+    setSaving(true);
     setSaved(false);
-    const result = await submitUpdateStoreName(name);
-    if (!result.ok) {
-      setErrors(result.errors ?? ['บันทึกไม่สำเร็จ']);
-      return;
+    try {
+      const result = await submitUpdateStoreName(name);
+      if (!result.ok) {
+        setErrors(result.errors ?? ['บันทึกไม่สำเร็จ']);
+        return;
+      }
+      setErrors([]);
+      setSaved(true);
+    } finally {
+      setSaving(false);
     }
-    setErrors([]);
-    setSaved(true);
   }
 
   const dirty = name !== store.name;
@@ -66,8 +73,8 @@ export function Settings() {
           {saved && <div className="rounded-md border border-success-500/40 bg-success-50/40 p-3 text-sm text-success-700">บันทึกแล้ว</div>}
 
           <div className="flex justify-end">
-            <Button onClick={handleSave} disabled={!dirty || !name.trim()}>
-              บันทึก
+            <Button onClick={handleSave} disabled={!dirty || !name.trim() || saving}>
+              {saving ? 'กำลังบันทึก...' : 'บันทึก'}
             </Button>
           </div>
         </div>

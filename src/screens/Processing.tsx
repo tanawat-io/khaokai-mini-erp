@@ -22,6 +22,7 @@ export function Processing() {
   const [ingredientId, setIngredientId] = useState('');
   const [form, setForm] = useState<ProcessingInput>(emptyForm(''));
   const [errors, setErrors] = useState<string[]>([]);
+  const [saving, setSaving] = useState(false);
 
   const ingredientById = useMemo(() => new Map(ingredients.map((i) => [i.id, i])), [ingredients]);
 
@@ -69,18 +70,24 @@ export function Processing() {
   }
 
   async function handleSave() {
+    if (saving) return;
     const sourceBatch = purchaseBatches.find((b) => b.id === form.sourceBatchId);
     const check = validateProcessingInput(form, sourceBatch);
     if (!check.ok) {
       setErrors(check.errors);
       return;
     }
-    const result = await submitCreateProcessing(form);
-    if (!result.ok) {
-      setErrors(result.errors ?? ['บันทึกไม่สำเร็จ']);
-      return;
+    setSaving(true);
+    try {
+      const result = await submitCreateProcessing(form);
+      if (!result.ok) {
+        setErrors(result.errors ?? ['บันทึกไม่สำเร็จ']);
+        return;
+      }
+      closeForm();
+    } finally {
+      setSaving(false);
     }
-    closeForm();
   }
 
   const sourceBatch = purchaseBatches.find((b) => b.id === form.sourceBatchId);
@@ -313,11 +320,11 @@ export function Processing() {
             )}
 
             <div className="flex justify-end gap-2 pt-1">
-              <Button variant="secondary" onClick={closeForm}>
+              <Button variant="secondary" onClick={closeForm} disabled={saving}>
                 ยกเลิก
               </Button>
-              <Button onClick={handleSave} disabled={sourceBatchOptions.length === 0}>
-                บันทึก
+              <Button onClick={handleSave} disabled={sourceBatchOptions.length === 0 || saving}>
+                {saving ? 'กำลังบันทึก...' : 'บันทึก'}
               </Button>
             </div>
           </div>
