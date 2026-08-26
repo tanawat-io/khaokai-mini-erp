@@ -1,0 +1,322 @@
+// Prisma schema — Phase 3B. Maps DATABASE.md §5-18 to real tables via SQLite.
+//
+// Enum note: SQLite has no native enum type, so Prisma does not support the `enum` keyword on
+// this datasource. Every "enum" field below (trackingType, status, sourceType, movementType,
+// etc.) is a plain String — validated by the existing domain-layer TS union types and
+// validate*Input() functions (src/domain/catalog.ts, inventory.ts), exactly as the mock
+// repository already relies on those functions rather than a DB-level constraint. This is a
+// storage-layer detail only; it does not change any business rule or its enforcement point.
+//
+// Timestamp note: createdAt/updatedAt below are DB-layer audit columns per DATABASE.md §20.
+// The existing domain TS types (src/domain/types.ts) do not carry these fields — they were
+// never needed by an in-memory-only prototype — so they are populated by Prisma but not mapped
+// into the domain-shaped objects the order engine/UI consume. Additive only, changes nothing
+// observable.
+//
+// ingredient_id vs stock_source_id (DATABASE.md §11): resolved to `ingredientId` — the only
+// field the actual implementation (types.ts, orderEngine.ts, RecipeEditor.tsx) has ever used.
+// See DATABASE.md §11's corrected text for the full note.
+
+generator client {
+  provider = "prisma-client"
+  output   = "./generated"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+// --- Store / Users / Sessions (§3, §4, Phase 3B §13-14) --------------------------------------
+
+model Store {
+  id             String   @id @default(cuid())
+  name           String
+  currency       String
+  setupComplete  Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model User {
+  id           String    @id @default(cuid())
+  username     String    @unique
+  passwordHash String
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  sessions     Session[]
+}
+
+model Session {
+  token     String   @id
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+// --- Ingredients (§5) ------------------------------------------------------------------------
+
+model Ingredient {
+  id                 String   @id @default(cuid())
+  name               String
+  category           String
+  baseUnit           String
+  trackingType       String // raw_by_weight | processed_batch | whole_piece | standard_cost
+  standardCost       Float?
+  lowStockThreshold  Float?
+  active             Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  purchaseBatches    PurchaseBatch[]
+  processingBatches  ProcessingBatch[]
+  processingOutputs  ProcessingOutput[]
+  wasteRecords       WasteRecord[]
+  menuItems          MenuItem[]
+  addOnItems         AddOnItem[]
+  stockMovements     StockMovement[]
+  fifoAllocations    FifoAllocation[]
+
+  @@index([category])
+}
+
+// --- Purchase Batches (§6) --------------------------------------------------------------------
+
+model PurchaseBatch {
+  id                String   @id @default(cuid())
+  ingredientId      String
+  ingredient        Ingredient @relation(fields: [ingredientId], references: [id])
+  purchaseDate      String // ISO date, matches domain PurchaseBatch.purchaseDate
+  quantity          Float
+  unit              String
+  totalCost         Float
+  unitCost          Float
+  remainingQuantity Float
+  status            String // active | depleted | void
+  reference         String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  processingBatches ProcessingBatch[]
+
+  @@index([ingredientId])
+  @@index([status])
+  @@index([purchaseDate])
+}
+
+// --- Processing Batches (§7) -------------------------------------------------------------------
+
+model ProcessingBatch {
+  id             String   @id @default(cuid())
+  sourceBatchId  String
+  sourceBatch    PurchaseBatch @relation(fields: [sourceBatchId], references: [id])
+  ingredientId   String
+  ingredient     Ingredient @relation(fields: [ingredientId], references: [id])
+  processedAt    String // ISO datetime
+  inputQuantity  Float
+  inputCost      Float
+  status         String // active | void
+  createdAt      DateTime @default(now())
+
+  outputs        ProcessingOutput[]
+
+  @@index([ingredientId])
+  @@index([sourceBatchId])
+}
+
+// --- Processing Outputs (§8) --------------------------------------------------------------------
+
+model ProcessingOutput {
+  id                 String   @id @default(cuid())
+  processingBatchId  String
+  processingBatch    ProcessingBatch @relation(fields: [processingBatchId], references: [id])
+  ingredientId       String
+  ingredient         Ingredient @relation(fields: [ingredientId], references: [id])
+  quantity           Float
+  remainingQuantity  Float
+  unitCost           Float
+  allocatedCost      Float
+  portionSize        Float?
+  portionCount       Int?
+  outputType         String // portion | piece | usable_stock
+  status             String // active | void
+  createdAt          String // ISO datetime, matches domain ProcessingOutput.createdAt
+
+  @@index([ingredientId])
+  @@index([processingBatchId])
+  @@index([status])
+}
+
+// --- Waste (§9) ------------------------------------------------------------------------------
+
+model WasteRecord {
+  id                 String   @id @default(cuid())
+  ingredientId       String
+  ingredient         Ingredient @relation(fields: [ingredientId], references: [id])
+  sourceType         String // purchase_batch | processing_output | standard_cost
+  sourceBatchId      String? // polymorphic (purchase_batch.id | processing_output.id) — not a Prisma relation, mirrors domain WasteRecord.sourceBatchId
+  processingBatchId  String?
+  quantity           Float
+  unitCost           Float
+  wasteValue         Float
+  reason             String
+  createdAt          String // ISO datetime, matches domain WasteRecord.createdAt
+
+  @@index([ingredientId])
+  @@index([sourceBatchId])
+}
+
+// --- Menus / Menu Items (§10-11) ----------------------------------------------------------------
+
+model Menu {
+  id           String   @id @default(cuid())
+  name         String
+  sellingPrice Float
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  recipe       MenuItem[]
+  orderItems   OrderItem[]
+}
+
+// Recipe line. `ingredientId` only (DATABASE.md §11 corrected — see header note); no separate
+// `unit`/`item_type` fields, matching domain.MenuItemRecipe exactly.
+model MenuItem {
+  id           String @id @default(cuid())
+  menuId       String
+  menu         Menu   @relation(fields: [menuId], references: [id], onDelete: Cascade)
+  ingredientId String
+  ingredient   Ingredient @relation(fields: [ingredientId], references: [id])
+  quantity     Float
+
+  @@index([menuId])
+  @@index([ingredientId])
+}
+
+// --- Add-ons / Add-on Items (§12-12a) -----------------------------------------------------------
+
+model AddOn {
+  id           String   @id @default(cuid())
+  name         String
+  sellingPrice Float
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  recipe       AddOnItem[]
+  orderItemAddOns OrderItemAddOn[]
+}
+
+model AddOnItem {
+  id           String @id @default(cuid())
+  addOnId      String
+  addOn        AddOn  @relation(fields: [addOnId], references: [id], onDelete: Cascade)
+  ingredientId String
+  ingredient   Ingredient @relation(fields: [ingredientId], references: [id])
+  quantity     Float
+
+  @@index([addOnId])
+  @@index([ingredientId])
+}
+
+// --- Orders (§13-15) ---------------------------------------------------------------------------
+
+model Order {
+  id           String   @id @default(cuid())
+  orderNumber  Int
+  sellingDate  String // ISO date
+  soldAt       String // ISO datetime
+  totalRevenue Float
+  totalCogs    Float
+  totalProfit  Float
+  status       String // active | voided
+  editedAt     String?
+  voidedAt     String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  items           OrderItem[]
+  fifoAllocations FifoAllocation[]
+  stockMovements  StockMovement[]
+
+  @@unique([sellingDate, orderNumber])
+  @@index([status])
+  @@index([sellingDate])
+}
+
+model OrderItem {
+  id               String @id @default(cuid())
+  orderId          String
+  order            Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  menuId           String // frozen reference — never re-reads live menu (DATABASE.md §25)
+  menu             Menu   @relation(fields: [menuId], references: [id])
+  quantity         Float
+  unitSellingPrice Float
+  lineRevenue      Float
+  lineCogs         Float
+  lineProfit       Float
+
+  addOns           OrderItemAddOn[]
+
+  @@index([orderId])
+  @@index([menuId])
+}
+
+model OrderItemAddOn {
+  id               String @id @default(cuid())
+  orderItemId      String
+  orderItem        OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  addOnId          String
+  addOn            AddOn  @relation(fields: [addOnId], references: [id])
+  quantity         Float
+  unitSellingPrice Float
+  revenue          Float
+  cogs             Float
+  lineProfit       Float
+
+  @@index([orderItemId])
+  @@index([addOnId])
+}
+
+// --- Stock Movements (§16) — append-only ledger --------------------------------------------------
+
+model StockMovement {
+  id             String @id @default(cuid())
+  ingredientId   String
+  ingredient     Ingredient @relation(fields: [ingredientId], references: [id])
+  sourceType     String // purchase_batch | processing_output | standard_cost
+  batchReference String? // not applicable when sourceType = standard_cost
+  quantityDelta  Float
+  movementType   String // purchase | processing_input | processing_output | sale_consumption | waste | adjustment | reversal
+  referenceType  String // order | purchase | processing | waste
+  referenceId    String
+  orderId        String? // set when referenceType = order, for cheap per-order lookups (edit/void)
+  order          Order?  @relation(fields: [orderId], references: [id])
+  createdAt      String // ISO datetime, matches domain StockMovement.createdAt
+
+  @@index([ingredientId])
+  @@index([referenceId])
+  @@index([orderId])
+}
+
+// --- FIFO Allocations (§17) ---------------------------------------------------------------------
+
+model FifoAllocation {
+  id               String @id @default(cuid())
+  orderId          String
+  order            Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  ingredientId     String
+  ingredient       Ingredient @relation(fields: [ingredientId], references: [id])
+  sourceType       String // purchase_batch | processing_output
+  sourceBatchId    String // polymorphic (purchase_batch.id | processing_output.id) — not a Prisma relation
+  quantityConsumed Float
+  unitCost         Float
+  allocatedCost    Float
+
+  @@index([orderId])
+  @@index([ingredientId])
+  @@index([sourceBatchId])
+}
