@@ -19,5 +19,5 @@
       "@/*": ["src/*"]
     }
   },
-  "include": ["**/*.ts", "../src/domain/**/*.ts", "../src/repository/contract.ts", "../src/repository/mockRepository.ts", "../src/repository/seedData.ts"]
+  "include": ["**/*.ts", "../src/domain/**/*.ts", "../src/repository/contract.ts", "../src/repository/mockRepository.ts", "../src/repository/seedData.ts", "../netlify/functions/**/*.ts"]
 }

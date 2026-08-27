@@ -3,10 +3,9 @@ dist
 .vite
 *.local
 
-# Phase 3B backend
+# Backend
 .env
-server/prisma/dev.db
-server/prisma/dev.db-journal
-server/prisma/test.db
-server/prisma/test.db-journal
 server/prisma/generated
+
+# Netlify local dev cache
+.netlify

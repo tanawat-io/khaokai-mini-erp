@@ -1,15 +1,24 @@
-// Single PrismaClient instance for the backend process. Prisma 7 requires an explicit driver
-// adapter (no more implicit `datasource.url` connection) — better-sqlite3 is the officially
-// maintained adapter for SQLite and matches this phase's chosen stack (SQLite + Prisma).
+import "dotenv/config";
+import { PrismaPg } from "@prisma/adapter-pg";
+import { PrismaClient } from "./generated/client";
 
-import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
-import { PrismaClient } from './generated/client';
+const connectionString = process.env.DATABASE_URL;
 
-const databaseUrl = process.env.DATABASE_URL;
-if (!databaseUrl) {
-  throw new Error('DATABASE_URL is not set — check .env (see .env.example)');
+if (!connectionString) {
+  throw new Error("DATABASE_URL is not set — check .env");
 }
 
-const adapter = new PrismaBetterSqlite3({ url: databaseUrl.replace(/^file:/, '') });
+// @prisma/adapter-pg wraps the raw `pg` driver and does not parse a `?schema=` query param out
+// of the connection string the way Prisma's CLI does — without passing it explicitly, every
+// query silently falls back to the connection's default `public` search_path regardless of the
+// URL (this is what the isolated Postgres test schema — see server/vitest.config.ts — relies on).
+const schema = new URL(connectionString).searchParams.get("schema") ?? undefined;
 
-export const prisma = new PrismaClient({ adapter });
+const adapter = new PrismaPg(
+  { connectionString },
+  { schema },
+);
+
+export const prisma = new PrismaClient({
+  adapter,
+});

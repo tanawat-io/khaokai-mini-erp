@@ -23,7 +23,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
 }
 
 // --- Store / Users / Sessions (§3, §4, Phase 3B §13-14) --------------------------------------
