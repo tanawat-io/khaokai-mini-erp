@@ -96,6 +96,16 @@ router.post('/processing', async (req, res) => {
   res.status(201).json(result.item);
 });
 
+router.post('/processing/:id/void', async (req, res) => {
+  const storeId = req.storeId!;
+  const existing = await prisma.processingBatch.findFirst({ where: { id: req.params.id, storeId } });
+  if (!existing) return sendError(res, 404, 'NOT_FOUND', 'ไม่พบรายการแปรรูปนี้');
+
+  const result = await repo.voidProcessing(storeId, req.params.id);
+  if (!result.ok) return sendError(res, 409, 'INVALID_STATUS', result.errors.join(', '), { errors: result.errors });
+  res.json(result.item);
+});
+
 router.post('/waste', async (req, res) => {
   const result = await repo.recordWaste(req.storeId!, req.body as WasteInput, new Date().toISOString());
   if (!result.ok) {

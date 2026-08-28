@@ -5,7 +5,11 @@ import { allocateProcessingCost, round2 } from '@/domain/costing';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
+import { Modal } from '@/components/ui/Modal';
+import { SearchableSelect } from '@/components/ui/SearchableSelect';
 import { formatBaht, formatDateTimeThai } from '@/lib/format';
+
+const EPSILON = 1e-9;
 
 interface OutputGroupForm {
   portionSize: number;
@@ -17,12 +21,15 @@ function emptyForm(sourceBatchId: string): ProcessingInput {
 }
 
 export function Processing() {
-  const { ingredients, purchaseBatches, processingBatches, processingOutputs, wasteRecords, submitCreateProcessing } = useAppStore();
+  const { ingredients, purchaseBatches, processingBatches, processingOutputs, wasteRecords, submitCreateProcessing, submitVoidProcessing } = useAppStore();
   const [creating, setCreating] = useState(false);
   const [ingredientId, setIngredientId] = useState('');
   const [form, setForm] = useState<ProcessingInput>(emptyForm(''));
   const [errors, setErrors] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
+  const [voidTargetId, setVoidTargetId] = useState<string | null>(null);
+  const [voiding, setVoiding] = useState(false);
+  const [voidError, setVoidError] = useState<string | null>(null);
 
   const ingredientById = useMemo(() => new Map(ingredients.map((i) => [i.id, i])), [ingredients]);
 
@@ -36,6 +43,35 @@ export function Processing() {
   );
 
   const sortedBatches = useMemo(() => [...processingBatches].sort((a, b) => (a.processedAt < b.processedAt ? 1 : -1)), [processingBatches]);
+
+  // Voidable only while every output this batch created is still fully untouched — mirrors the
+  // hard block in domain/processingEngine.ts (nothing consumed by an order, no waste recorded
+  // against an output since). Once anything has moved, correcting requires a fresh entry instead.
+  function canVoid(batchId: string): boolean {
+    return processingOutputs
+      .filter((o) => o.processingBatchId === batchId)
+      .every((o) => Math.abs(o.remainingQuantity - o.quantity) < EPSILON);
+  }
+
+  function openVoidConfirm(batchId: string) {
+    setVoidError(null);
+    setVoidTargetId(batchId);
+  }
+
+  async function confirmVoid() {
+    if (!voidTargetId || voiding) return;
+    setVoiding(true);
+    try {
+      const result = await submitVoidProcessing(voidTargetId);
+      if (!result.ok) {
+        setVoidError(result.errors?.[0] ?? 'ยกเลิกไม่สำเร็จ');
+        return;
+      }
+      setVoidTargetId(null);
+    } finally {
+      setVoiding(false);
+    }
+  }
 
   function openCreate() {
     const firstIngredient = eligibleIngredients[0]?.id ?? '';
@@ -102,7 +138,7 @@ export function Processing() {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold text-warmgray-900">การแปรรูป</h1>
           <p className="text-sm text-warmgray-500">แปรรูปวัตถุดิบต้นทางเป็นผลผลิตแบบพอร์ชั่น — ต้นทุนคิดตามกรัมนำเข้า</p>
@@ -122,11 +158,28 @@ export function Processing() {
             const outputs = processingOutputs.filter((o) => o.processingBatchId === pb.id);
             const waste = wasteRecords.find((w) => w.processingBatchId === pb.id);
             const ingredient = ingredientById.get(pb.ingredientId);
+            const isVoid = pb.status === 'void';
             return (
-              <Card key={pb.id}>
-                <div className="flex items-center justify-between">
-                  <div className="font-medium text-warmgray-900">{ingredient?.name ?? pb.ingredientId}</div>
-                  <span className="text-xs text-warmgray-400">{formatDateTimeThai(pb.processedAt)}</span>
+              <Card key={pb.id} className={isVoid ? 'opacity-60' : ''}>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <div className="font-medium text-warmgray-900">{ingredient?.name ?? pb.ingredientId}</div>
+                    {isVoid && <Badge tone="danger">ยกเลิกแล้ว</Badge>}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-warmgray-400">{formatDateTimeThai(pb.processedAt)}</span>
+                    {!isVoid && (
+                      <button
+                        type="button"
+                        className="flex min-h-touch items-center px-2 text-sm text-danger-600 disabled:cursor-not-allowed disabled:text-warmgray-300"
+                        disabled={!canVoid(pb.id)}
+                        title={canVoid(pb.id) ? undefined : 'ผลผลิตถูกใช้ไปแล้ว (ในออเดอร์หรือของเสีย) — ยกเลิกไม่ได้'}
+                        onClick={() => openVoidConfirm(pb.id)}
+                      >
+                        ยกเลิก
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <div className="mt-1 text-sm text-warmgray-500">
                   นำเข้า {pb.inputQuantity} {ingredient?.baseUnit ?? ''} · ต้นทุนนำเข้า ฿{formatBaht(pb.inputCost)} · จากล็อตซื้อ {pb.sourceBatchId}
@@ -179,17 +232,11 @@ export function Processing() {
           <div className="space-y-3">
             <div>
               <label className="mb-1 block text-sm text-warmgray-500">วัตถุดิบต้นทาง</label>
-              <select
-                className="min-h-touch w-full rounded-md border border-warmgray-300 px-3 text-[15px]"
+              <SearchableSelect
                 value={ingredientId}
-                onChange={(e) => handleIngredientChange(e.target.value)}
-              >
-                {eligibleIngredients.map((i) => (
-                  <option key={i.id} value={i.id}>
-                    {i.name}
-                  </option>
-                ))}
-              </select>
+                onChange={handleIngredientChange}
+                options={eligibleIngredients.map((i) => ({ value: i.id, label: i.name }))}
+              />
             </div>
 
             <div>
@@ -233,31 +280,44 @@ export function Processing() {
               </div>
               <div className="space-y-2">
                 {form.outputs.map((o, index) => (
-                  <div key={index} className="flex items-center gap-2">
-                    <input
-                      type="number"
-                      placeholder={`ขนาด (${selectedUnit})`}
-                      className="min-h-touch w-28 rounded-md border border-warmgray-300 px-2 text-[15px]"
-                      value={o.portionSize}
-                      min={0}
-                      onFocus={(e) => e.target.select()}
-                      onChange={(e) => updateOutput(index, { portionSize: Number(e.target.value) })}
-                    />
-                    <span className="text-warmgray-400">×</span>
-                    <input
-                      type="number"
-                      placeholder="จำนวนส่วน"
-                      className="min-h-touch w-24 rounded-md border border-warmgray-300 px-2 text-[15px]"
-                      value={o.portionCount}
-                      min={0}
-                      onFocus={(e) => e.target.select()}
-                      onChange={(e) => updateOutput(index, { portionCount: Number(e.target.value) })}
-                    />
+                  <div key={index} className="flex flex-col gap-2 rounded-md border border-warmgray-200 p-2 sm:flex-row sm:items-center sm:border-0 sm:p-0">
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        placeholder={`ขนาด (${selectedUnit})`}
+                        className="min-h-touch w-full min-w-0 flex-1 rounded-md border border-warmgray-300 px-2 text-[15px] sm:w-28 sm:flex-none"
+                        value={o.portionSize}
+                        min={0}
+                        onFocus={(e) => e.target.select()}
+                        onChange={(e) => updateOutput(index, { portionSize: Number(e.target.value) })}
+                      />
+                      <span className="text-warmgray-400">×</span>
+                      <input
+                        type="number"
+                        placeholder="จำนวนส่วน"
+                        className="min-h-touch w-full min-w-0 flex-1 rounded-md border border-warmgray-300 px-2 text-[15px] sm:w-24 sm:flex-none"
+                        value={o.portionCount}
+                        min={0}
+                        onFocus={(e) => e.target.select()}
+                        onChange={(e) => updateOutput(index, { portionCount: Number(e.target.value) })}
+                      />
+                      <button
+                        type="button"
+                        className="flex min-h-touch items-center px-2 text-sm text-danger-600 sm:hidden"
+                        onClick={() => removeOutputRow(index)}
+                      >
+                        ลบ
+                      </button>
+                    </div>
                     <span className="flex-1 text-sm text-warmgray-500">
                       = {o.portionSize * o.portionCount} {selectedUnit}
                       {allocationPreview && ` · ฿${formatBaht(allocationPreview.outputs[index]?.allocatedCost ?? 0)}`}
                     </span>
-                    <button type="button" className="flex min-h-touch items-center px-2 text-sm text-danger-600" onClick={() => removeOutputRow(index)}>
+                    <button
+                      type="button"
+                      className="hidden min-h-touch items-center px-2 text-sm text-danger-600 sm:flex"
+                      onClick={() => removeOutputRow(index)}
+                    >
                       ลบ
                     </button>
                   </div>
@@ -268,7 +328,7 @@ export function Processing() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
                 <label className="mb-1 block text-sm text-warmgray-500">ของเสีย ({selectedUnit})</label>
                 <input
@@ -330,6 +390,29 @@ export function Processing() {
           </div>
         </Card>
       )}
+
+      <Modal
+        open={voidTargetId !== null}
+        onClose={() => (voiding ? null : setVoidTargetId(null))}
+        title="ยืนยันการยกเลิกการแปรรูป"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setVoidTargetId(null)} disabled={voiding}>
+              ไม่ยกเลิก
+            </Button>
+            <Button variant="danger" onClick={confirmVoid} disabled={voiding}>
+              {voiding ? 'กำลังยกเลิก...' : 'ยืนยันยกเลิก'}
+            </Button>
+          </>
+        }
+      >
+        <p>
+          การแปรรูปนี้จะถูกทำเครื่องหมายว่า <strong>ยกเลิก</strong> — ปริมาณที่นำเข้าแปรรูปจะถูกคืนกลับไปยังล็อตซื้อต้นทาง
+          และผลผลิตทั้งหมดจะใช้งานต่อไม่ได้ รายการนี้จะยังปรากฏใน History แต่ถูกทำเครื่องหมายว่ายกเลิกแล้ว
+          จากนั้นสามารถบันทึกการแปรรูปใหม่ที่ถูกต้องได้ทันที
+        </p>
+        {voidError && <p className="mt-3 rounded-md border border-danger-500/40 bg-danger-50/40 p-3 text-sm text-danger-700">{voidError}</p>}
+      </Modal>
     </div>
   );
 }

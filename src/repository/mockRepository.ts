@@ -18,6 +18,7 @@ import {
 } from './seedData';
 import type { AddOn, Ingredient, Menu, Order, ProcessingBatch, ProcessingOutput, PurchaseBatch, Store, WasteRecord } from '@/domain/types';
 import { createOrder, editOrder, voidOrder, type OrderEngineContext } from '@/domain/orderEngine';
+import { voidProcessing as voidProcessingEngine } from '@/domain/processingEngine';
 import type { OrderDraft } from '@/domain/stockCheck';
 import { getStandardCostAvailableQuantity } from '@/domain/stockCheck';
 import {
@@ -280,9 +281,11 @@ export function repoSetAddOnActive(id: string, active: boolean): CatalogResult<A
 }
 
 // --- Inventory (Purchases, Processing, Waste) --------------------------------
-// No edit/void here — purchase price history must be retained (BUSINESS_RULES.md §5) and
-// these are immutable ledger entries, matching the void-not-edit philosophy already used
-// for orders rather than allowing free-form correction of stock-affecting records.
+// Purchases/Waste: create-only — purchase price history must be retained (BUSINESS_RULES.md §5)
+// and these are immutable ledger entries. Processing additionally supports void (see
+// repoVoidProcessing below and domain/processingEngine.ts) — never edit-in-place, matching the
+// void-not-edit philosophy already used for orders — guarded to only when nothing it produced
+// has been consumed yet; the fix for a mistake is to void it and enter a corrected one.
 
 export function repoCreatePurchase(input: PurchaseInput): CatalogResult<PurchaseBatch> {
   const check = validatePurchaseInput(input, ingredientsMap());
@@ -380,6 +383,12 @@ export function repoCreateProcessing(input: ProcessingInput, nowIso: string): Ca
   }
 
   return { ok: true, item: processingBatch };
+}
+
+export function repoVoidProcessing(batchId: string): CatalogResult<ProcessingBatch> {
+  const result = voidProcessingEngine(batchId, { processingBatches, processingOutputs, purchaseBatches, wasteRecords });
+  if (!result.ok) return { ok: false, errors: result.errors };
+  return { ok: true, item: result.batch };
 }
 
 export function repoRecordWaste(input: WasteInput, nowIso: string): CatalogResult<WasteRecord> {
@@ -486,6 +495,7 @@ export const mockRepository: RepositoryContract = {
   setAddOnActive: toAsync(repoSetAddOnActive),
   createPurchase: toAsync(repoCreatePurchase),
   createProcessing: toAsync(repoCreateProcessing),
+  voidProcessing: toAsync(repoVoidProcessing),
   recordWaste: toAsync(repoRecordWaste),
   updateStoreName: toAsync(repoUpdateStoreName),
 };

@@ -5,6 +5,7 @@ import { today } from '@/repository';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
+import { SearchableSelect } from '@/components/ui/SearchableSelect';
 import { formatBaht, formatDateThai } from '@/lib/format';
 
 const statusLabel: Record<string, string> = { active: 'ใช้งานอยู่', depleted: 'หมดแล้ว', void: 'ยกเลิก' };
@@ -65,7 +66,7 @@ export function Purchases() {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold text-warmgray-900">การซื้อวัตถุดิบ</h1>
           <p className="text-sm text-warmgray-500">บันทึกล็อตการซื้อ — จะพร้อมใช้งานใน FIFO ทันที</p>
@@ -152,19 +153,13 @@ export function Purchases() {
           <div className="space-y-3">
             <div>
               <label className="mb-1 block text-sm text-warmgray-500">วัตถุดิบ</label>
-              <select
-                className="min-h-touch w-full rounded-md border border-warmgray-300 px-3 text-[15px]"
+              <SearchableSelect
                 value={form.ingredientId}
-                onChange={(e) => handleIngredientChange(e.target.value)}
-              >
-                {ingredients.map((i) => (
-                  <option key={i.id} value={i.id}>
-                    {i.name}
-                  </option>
-                ))}
-              </select>
+                onChange={handleIngredientChange}
+                options={ingredients.map((i) => ({ value: i.id, label: i.name }))}
+              />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
                 <label className="mb-1 block text-sm text-warmgray-500">จำนวน</label>
                 <input
@@ -183,7 +178,7 @@ export function Purchases() {
                 </div>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
                 <label className="mb-1 block text-sm text-warmgray-500">ราคารวม (บาท)</label>
                 <input

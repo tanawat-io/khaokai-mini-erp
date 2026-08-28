@@ -76,7 +76,7 @@ export function Ingredients() {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold text-warmgray-900">วัตถุดิบ</h1>
           <p className="text-sm text-warmgray-500">ตั้งค่าวัตถุดิบ หน่วยฐาน และวิธีติดตามสต๊อก</p>
@@ -141,7 +141,7 @@ export function Ingredients() {
                 onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
               />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
                 <label className="mb-1 block text-sm text-warmgray-500">หมวดหมู่</label>
                 <input

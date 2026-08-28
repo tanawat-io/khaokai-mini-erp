@@ -7,6 +7,7 @@ import { round2 } from '@/domain/costing';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
+import { SearchableSelect } from '@/components/ui/SearchableSelect';
 import { formatBaht, formatDateTimeThai } from '@/lib/format';
 
 const sourceTypeLabel: Record<string, string> = {
@@ -112,7 +113,7 @@ export function Waste() {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold text-warmgray-900">ของเสีย</h1>
           <p className="text-sm text-warmgray-500">บันทึกของเสียจากล็อตซื้อหรือล็อตแปรรูปที่มีอยู่ — สต๊อกและมูลค่าจะถูกตัดออกทันที</p>
@@ -193,17 +194,11 @@ export function Waste() {
           <div className="space-y-3">
             <div>
               <label className="mb-1 block text-sm text-warmgray-500">วัตถุดิบ</label>
-              <select
-                className="min-h-touch w-full rounded-md border border-warmgray-300 px-3 text-[15px]"
+              <SearchableSelect
                 value={form.ingredientId}
-                onChange={(e) => handleIngredientChange(e.target.value)}
-              >
-                {wastableIngredients.map((i) => (
-                  <option key={i.id} value={i.id}>
-                    {i.name}
-                  </option>
-                ))}
-              </select>
+                onChange={handleIngredientChange}
+                options={wastableIngredients.map((i) => ({ value: i.id, label: i.name }))}
+              />
             </div>
 
             {isStandardCost ? (

@@ -38,6 +38,7 @@ import {
 import type { RepositorySnapshot, CatalogResult } from '../../src/repository/mockRepository';
 import type { Ingredient, Menu, AddOn, Order, ProcessingBatch, PurchaseBatch, Store, WasteRecord, StockMovement } from '../../src/domain/types';
 import { createOrder, editOrder, voidOrder, type OrderEngineContext, type OrderResult } from '../../src/domain/orderEngine';
+import { voidProcessing as voidProcessingEngine, type ProcessingEngineContext } from '../../src/domain/processingEngine';
 import type { OrderDraft } from '../../src/domain/stockCheck';
 import { getStandardCostAvailableQuantity } from '../../src/domain/stockCheck';
 import {
@@ -349,6 +350,54 @@ export async function createProcessing(storeId: string, input: ProcessingInput, 
 
   const row = await prisma.processingBatch.findUniqueOrThrow({ where: { id: processingBatchId } });
   return { ok: true, item: toProcessingBatch(row) };
+}
+
+// Void serializes through orderMutex like order create/edit/void: it mutates
+// ProcessingOutput.remainingQuantity, the same field concurrent order FIFO consumption
+// reads/writes, so the two must not interleave (mutex.ts's rationale applies identically here).
+export async function voidProcessing(storeId: string, batchId: string): Promise<CatalogResult<ProcessingBatch>> {
+  return orderMutex.runExclusive(async () => {
+    const batchRow = await prisma.processingBatch.findFirst({ where: { id: batchId, storeId } });
+    if (!batchRow) return { ok: false, errors: ['ไม่พบรายการแปรรูปนี้'] };
+
+    const [outputRows, sourceRow, wasteRows] = await Promise.all([
+      prisma.processingOutput.findMany({ where: { processingBatchId: batchId, storeId } }),
+      prisma.purchaseBatch.findFirst({ where: { id: batchRow.sourceBatchId, storeId } }),
+      prisma.wasteRecord.findMany({ where: { processingBatchId: batchId, storeId } }),
+    ]);
+
+    const ctx: ProcessingEngineContext = {
+      processingBatches: [toProcessingBatch(batchRow)],
+      processingOutputs: outputRows.map(toProcessingOutput),
+      purchaseBatches: sourceRow ? [toPurchaseBatch(sourceRow)] : [],
+      wasteRecords: wasteRows.map(toWasteRecord),
+    };
+
+    const result = voidProcessingEngine(batchId, ctx);
+    if (!result.ok) return { ok: false, errors: result.errors };
+
+    await prisma.$transaction(async (tx) => {
+      await tx.processingBatch.update({ where: { id: batchId }, data: { status: 'void' } });
+      for (const output of ctx.processingOutputs) {
+        await tx.processingOutput.update({
+          where: { id: output.id },
+          data: { remainingQuantity: output.remainingQuantity, status: output.status },
+        });
+      }
+      if (sourceRow) {
+        const updatedSource = ctx.purchaseBatches[0];
+        await tx.purchaseBatch.update({
+          where: { id: sourceRow.id },
+          data: { remainingQuantity: updatedSource.remainingQuantity, status: updatedSource.status },
+        });
+      }
+      if (wasteRows.length > 0) {
+        await tx.wasteRecord.deleteMany({ where: { processingBatchId: batchId, storeId } });
+      }
+    });
+
+    return { ok: true, item: result.batch };
+  });
 }
 
 export async function recordWaste(storeId: string, input: WasteInput, nowIso: string): Promise<CatalogResult<WasteRecord>> {

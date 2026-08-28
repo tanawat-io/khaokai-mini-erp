@@ -48,6 +48,7 @@ interface AppState extends RepositorySnapshot {
 
   submitCreatePurchase: (input: PurchaseInput) => Promise<CatalogActionResult>;
   submitCreateProcessing: (input: ProcessingInput) => Promise<CatalogActionResult>;
+  submitVoidProcessing: (batchId: string) => Promise<CatalogActionResult>;
   submitRecordWaste: (input: WasteInput) => Promise<CatalogActionResult>;
   submitUpdateStoreName: (name: string) => Promise<CatalogActionResult>;
 }
@@ -179,6 +180,12 @@ export const useAppStore = create<AppState>((set) => ({
   },
   submitCreateProcessing: async (input) => {
     const result = await repository.createProcessing(input, new Date().toISOString());
+    if (!result.ok) return { ok: false, errors: result.errors };
+    await refreshSnapshot(set);
+    return { ok: true, id: result.item.id };
+  },
+  submitVoidProcessing: async (batchId) => {
+    const result = await repository.voidProcessing(batchId);
     if (!result.ok) return { ok: false, errors: result.errors };
     await refreshSnapshot(set);
     return { ok: true, id: result.item.id };

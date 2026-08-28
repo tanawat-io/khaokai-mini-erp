@@ -129,9 +129,9 @@ export function OrderDetail() {
 
   return (
     <div className="space-y-5 pb-10">
-      <div className="flex items-start justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-2xl font-semibold text-warmgray-900">Order #{order.orderNumber}</h1>
             {order.status === 'voided' ? <Badge tone="danger">ยกเลิก (Voided)</Badge> : <Badge tone="success">สำเร็จ</Badge>}
           </div>
@@ -139,10 +139,10 @@ export function OrderDetail() {
         </div>
         {order.status === 'active' && !editing && (
           <div className="flex gap-2">
-            <Button variant="secondary" onClick={startEdit}>
+            <Button variant="secondary" className="flex-1 sm:flex-none" onClick={startEdit}>
               แก้ไข
             </Button>
-            <Button variant="danger" onClick={() => setVoidConfirmOpen(true)}>
+            <Button variant="danger" className="flex-1 sm:flex-none" onClick={() => setVoidConfirmOpen(true)}>
               ยกเลิกออเดอร์
             </Button>
           </div>

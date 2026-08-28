@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Stepper } from '@/components/ui/Stepper';
 import { ShortageTable } from '@/components/ui/ShortageTable';
+import { SearchableSelect } from '@/components/ui/SearchableSelect';
 import { formatBaht } from '@/lib/format';
 
 export function NewOrder() {
@@ -92,17 +93,12 @@ export function NewOrder() {
 
       <Card>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-          <select
-            className="min-h-touch flex-1 rounded-md border border-warmgray-300 px-3 text-[15px]"
+          <SearchableSelect
+            className="sm:flex-1"
             value={pickerMenuId}
-            onChange={(e) => setPickerMenuId(e.target.value)}
-          >
-            {activeMenus.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.name} — ฿{formatBaht(m.sellingPrice)}
-              </option>
-            ))}
-          </select>
+            onChange={setPickerMenuId}
+            options={activeMenus.map((m) => ({ value: m.id, label: `${m.name} — ฿${formatBaht(m.sellingPrice)}` }))}
+          />
           <Button onClick={addLine} className="sm:w-auto">
             + เพิ่มเมนู
           </Button>

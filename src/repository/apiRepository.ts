@@ -80,6 +80,7 @@ export const apiRepository: RepositoryContract = {
 
   createPurchase: (input) => catalogCall<PurchaseBatch>('/api/purchases', { method: 'POST', body: JSON.stringify(input) }),
   createProcessing: (input) => catalogCall<ProcessingBatch>('/api/processing', { method: 'POST', body: JSON.stringify(input) }),
+  voidProcessing: (batchId) => catalogCall<ProcessingBatch>(`/api/processing/${batchId}/void`, { method: 'POST' }),
   recordWaste: (input) => catalogCall<WasteRecord>('/api/waste', { method: 'POST', body: JSON.stringify(input) }),
 
   updateStoreName: (name) => catalogCall<Store>('/api/settings/store-name', { method: 'PUT', body: JSON.stringify({ name }) }),

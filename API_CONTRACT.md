@@ -92,9 +92,22 @@ No edit/void — purchase price history is an immutable ledger (BUSINESS_RULES.m
 | Method | Endpoint | Contract method |
 |---|---|---|
 | POST | `/api/processing` | `createProcessing(input: ProcessingInput, nowIso)` |
+| POST | `/api/processing/:id/void` | `voidProcessing(batchId)` |
 
 Atomically: decrements the source purchase batch, inserts the processing batch row, inserts one
 processing-output row per portion-size group, and (if `wasteQuantity > 0`) a waste record.
+
+`void` is the only correction path — there is no edit endpoint (`domain/processingEngine.ts`).
+It is hard-blocked (`409 INVALID_STATUS`) unless every output this batch produced is still fully
+untouched (`remainingQuantity === quantity` — nothing consumed by an order, no waste recorded
+against an output since); the batch itself must also still be `active`. On success: the source
+purchase batch's `remainingQuantity` is restored by `inputQuantity`, every output row is set to
+`status: 'void'`/`remainingQuantity: 0` (kept for audit, not deleted), the processing batch's own
+`status` flips to `void`, and the `WasteRecord` created at processing time (if any) is hard-deleted
+— the one exception to "no hard delete" in this contract, since that waste never happened once the
+batch is voided and `WasteRecord` has no status field to soft-void it with. Serialized through the
+same `orderMutex` as order mutations, since it touches `ProcessingOutput.remainingQuantity`.
+`404 NOT_FOUND` if the batch doesn't exist (or belongs to another store).
 
 ## Waste
 

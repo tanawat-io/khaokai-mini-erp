@@ -3,6 +3,7 @@ import { useAppStore } from '@/state/store';
 import { buildHistoryEvents, type HistoryEventType } from '@/domain/history';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
+import { SearchableSelect } from '@/components/ui/SearchableSelect';
 import { formatBaht, formatDateTimeThai } from '@/lib/format';
 
 const typeLabel: Record<HistoryEventType, string> = {
@@ -77,18 +78,11 @@ export function History() {
           </div>
           <div>
             <label className="mb-1 block text-sm text-warmgray-500">วัตถุดิบ</label>
-            <select
-              className="min-h-touch w-full rounded-md border border-warmgray-300 px-3 text-[15px]"
+            <SearchableSelect
               value={ingredientFilter}
-              onChange={(e) => setIngredientFilter(e.target.value)}
-            >
-              <option value={ALL}>ทั้งหมด</option>
-              {ingredients.map((i) => (
-                <option key={i.id} value={i.id}>
-                  {i.name}
-                </option>
-              ))}
-            </select>
+              onChange={setIngredientFilter}
+              options={[{ value: ALL, label: 'ทั้งหมด' }, ...ingredients.map((i) => ({ value: i.id, label: i.name }))]}
+            />
           </div>
           <div>
             <label className="mb-1 block text-sm text-warmgray-500">ตั้งแต่วันที่</label>

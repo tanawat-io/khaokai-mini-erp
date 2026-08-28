@@ -37,9 +37,12 @@ export interface RepositoryContract {
   updateAddOn(id: string, input: CatalogItemInput): Promise<CatalogResult<AddOn>>;
   setAddOnActive(id: string, active: boolean): Promise<CatalogResult<AddOn>>;
 
-  // Inventory — create-only, immutable ledger entries (BUSINESS_RULES.md §5)
+  // Inventory — create-only for Purchases/Waste, immutable ledger entries (BUSINESS_RULES.md §5).
+  // Processing additionally supports void (correct a mistake by canceling + re-entering) —
+  // guarded to only when nothing it produced has been consumed yet (domain/processingEngine.ts).
   createPurchase(input: PurchaseInput): Promise<CatalogResult<PurchaseBatch>>;
   createProcessing(input: ProcessingInput, nowIso: string): Promise<CatalogResult<ProcessingBatch>>;
+  voidProcessing(batchId: string): Promise<CatalogResult<ProcessingBatch>>;
   recordWaste(input: WasteInput, nowIso: string): Promise<CatalogResult<WasteRecord>>;
 
   // Settings
