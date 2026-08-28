@@ -15,6 +15,7 @@ interface AuthState {
   error: string | null;
   checkSession: () => Promise<void>;
   login: (username: string, password: string) => Promise<{ ok: boolean; error?: string }>;
+  register: (username: string, password: string) => Promise<{ ok: boolean; error?: string }>;
   logout: () => Promise<void>;
 }
 
@@ -48,6 +49,23 @@ export const useAuthStore = create<AuthState>((set) => ({
     const body = await res.json().catch(() => ({}));
     if (!res.ok) {
       const error = body?.error?.message ?? 'เข้าสู่ระบบไม่สำเร็จ';
+      set({ error });
+      return { ok: false, error };
+    }
+    set({ status: 'authenticated', username: body.username, error: null });
+    return { ok: true };
+  },
+
+  register: async (username, password) => {
+    const res = await fetch('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({ username, password }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const error = body?.error?.message ?? 'สมัครสมาชิกไม่สำเร็จ';
       set({ error });
       return { ok: false, error };
     }

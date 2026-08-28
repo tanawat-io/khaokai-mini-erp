@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { prisma } from '../prisma/client';
-import { verifyPassword } from '../auth/password';
+import { hashPassword, verifyPassword } from '../auth/password';
 import { createSession, destroySession, getUserForToken, SESSION_COOKIE_NAME } from '../auth/session';
 import { sendError } from './errors';
 
@@ -12,6 +12,31 @@ const COOKIE_OPTIONS = {
   path: '/',
   secure: process.env.NODE_ENV === 'production',
 };
+
+authRouter.post('/register', async (req, res) => {
+  const username = String(req.body?.username ?? '').trim();
+  const password = String(req.body?.password ?? '');
+  if (!username || password.length < 8) {
+    return sendError(res, 400, 'VALIDATION_ERROR', 'ชื่อผู้ใช้ห้ามว่าง และรหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร');
+  }
+
+  const existing = await prisma.user.findUnique({ where: { username } });
+  if (existing) {
+    return sendError(res, 409, 'USERNAME_TAKEN', 'ชื่อผู้ใช้นี้ถูกใช้งานแล้ว');
+  }
+
+  const passwordHash = await hashPassword(password);
+  const user = await prisma.$transaction(async (tx) => {
+    const newStore = await tx.store.create({
+      data: { name: `ร้านของ ${username}`, currency: 'บาท (THB)', setupComplete: false },
+    });
+    return tx.user.create({ data: { username, passwordHash, storeId: newStore.id } });
+  });
+
+  const { token, expiresAt } = await createSession(user.id);
+  res.cookie(SESSION_COOKIE_NAME, token, { ...COOKIE_OPTIONS, expires: expiresAt });
+  res.status(201).json({ ok: true, username: user.username });
+});
 
 authRouter.post('/login', async (req, res) => {
   const username = String(req.body?.username ?? '');

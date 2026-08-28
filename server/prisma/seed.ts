@@ -34,12 +34,13 @@ async function main() {
   const adminUsername = process.env.ADMIN_USERNAME ?? 'admin';
   const adminPassword = process.env.ADMIN_PASSWORD ?? 'changeme123';
   await prisma.user.create({
-    data: { id: 'user-admin', username: adminUsername, passwordHash: await hashPassword(adminPassword) },
+    data: { id: 'user-admin', username: adminUsername, passwordHash: await hashPassword(adminPassword), storeId: store.id },
   });
 
   await prisma.ingredient.createMany({
     data: ingredients.map((i) => ({
       id: i.id,
+      storeId: store.id,
       name: i.name,
       category: i.category,
       baseUnit: i.baseUnit,
@@ -53,6 +54,7 @@ async function main() {
   await prisma.purchaseBatch.createMany({
     data: purchaseBatches.map((b) => ({
       id: b.id,
+      storeId: store.id,
       ingredientId: b.ingredientId,
       purchaseDate: b.purchaseDate,
       quantity: b.quantity,
@@ -68,6 +70,7 @@ async function main() {
   await prisma.stockMovement.createMany({
     data: stockMovements.map((m) => ({
       id: m.id,
+      storeId: store.id,
       ingredientId: m.ingredientId,
       sourceType: m.sourceType,
       batchReference: m.batchReference ?? null,
@@ -82,6 +85,7 @@ async function main() {
   await prisma.processingBatch.createMany({
     data: processingBatches.map((p) => ({
       id: p.id,
+      storeId: store.id,
       sourceBatchId: p.sourceBatchId,
       ingredientId: p.ingredientId,
       processedAt: p.processedAt,
@@ -94,6 +98,7 @@ async function main() {
   await prisma.processingOutput.createMany({
     data: processingOutputs.map((o) => ({
       id: o.id,
+      storeId: store.id,
       processingBatchId: o.processingBatchId,
       ingredientId: o.ingredientId,
       quantity: o.quantity,
@@ -111,6 +116,7 @@ async function main() {
   await prisma.wasteRecord.createMany({
     data: wasteRecords.map((w) => ({
       id: w.id,
+      storeId: store.id,
       ingredientId: w.ingredientId,
       sourceType: w.sourceType,
       sourceBatchId: w.sourceBatchId ?? null,
@@ -127,6 +133,7 @@ async function main() {
     await prisma.menu.create({
       data: {
         id: menu.id,
+        storeId: store.id,
         name: menu.name,
         sellingPrice: menu.sellingPrice,
         active: menu.active,
@@ -145,6 +152,7 @@ async function main() {
     await prisma.addOn.create({
       data: {
         id: addOn.id,
+        storeId: store.id,
         name: addOn.name,
         sellingPrice: addOn.sellingPrice,
         active: addOn.active,
@@ -162,7 +170,7 @@ async function main() {
   // --- Scripted order history (mirrors src/repository/mockRepository.ts exactly) --------------
 
   const seedOrder = async (sellingDate: string, nowIso: string, draft: OrderDraft) => {
-    const result = await createOrderForSeed(sellingDate, nowIso, draft);
+    const result = await createOrderForSeed(store.id, sellingDate, nowIso, draft);
     if (!result.ok) throw new Error(`Seed order failed stock check on ${sellingDate}: ${JSON.stringify(result.shortages)}`);
     return result.order;
   };
@@ -209,7 +217,7 @@ async function main() {
     lines: [{ menuId: 'menu-padkrapao-moo', quantity: 3, unitSellingPrice: 50, addOns: [] }],
   });
 
-  const voidResult = await voidOrderForSeed(orderToVoid.id, '2026-08-24T15:00:00+07:00');
+  const voidResult = await voidOrderForSeed(store.id, orderToVoid.id, '2026-08-24T15:00:00+07:00');
   if (!voidResult.ok) throw new Error('Seed void failed unexpectedly');
 
   console.log('Seed complete.');

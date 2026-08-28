@@ -2,9 +2,11 @@ import { describe, it, expect } from 'vitest';
 import { prisma } from '../../prisma/client';
 import { createIngredient, createPurchase } from '../prismaRepository';
 
+const STORE_ID = 'store-1';
+
 describe('catalog (Prisma-backed)', () => {
   it('rejects a standard_cost ingredient with no standardCost', async () => {
-    const result = await createIngredient({
+    const result = await createIngredient(STORE_ID, {
       name: 'ทดสอบ',
       category: 'ทดสอบ',
       baseUnit: 'g',
@@ -14,7 +16,7 @@ describe('catalog (Prisma-backed)', () => {
   });
 
   it('creates a valid ingredient and persists it', async () => {
-    const result = await createIngredient({
+    const result = await createIngredient(STORE_ID, {
       name: 'ทดสอบ2',
       category: 'ทดสอบ',
       baseUnit: 'g',
@@ -28,7 +30,7 @@ describe('catalog (Prisma-backed)', () => {
 
   it('a standard_cost purchase writes a compensating stock movement', async () => {
     const before = await prisma.stockMovement.count({ where: { ingredientId: 'ing-basil' } });
-    const result = await createPurchase({
+    const result = await createPurchase(STORE_ID, {
       ingredientId: 'ing-basil',
       quantity: 100,
       unit: 'g',

@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import { AppShell } from '@/components/layout/AppShell';
 import { Dashboard } from '@/screens/Dashboard';
@@ -16,6 +16,7 @@ import { Waste } from '@/screens/Waste';
 import { History } from '@/screens/History';
 import { Settings } from '@/screens/Settings';
 import { Login } from '@/screens/Login';
+import { Register } from '@/screens/Register';
 import { SetupWizard } from '@/screens/SetupWizard';
 import { useAuthStore } from '@/state/authStore';
 import { useAppStore, loadInitialSnapshot } from '@/state/store';
@@ -34,6 +35,7 @@ export default function App() {
   const checkSession = useAuthStore((s) => s.checkSession);
   const loading = useAppStore((s) => s.loading);
   const setupComplete = useAppStore((s) => s.store.setupComplete);
+  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
 
   useEffect(() => {
     // Any 401 from the real API repository must drive the app back to Login — not a generic
@@ -54,7 +56,13 @@ export default function App() {
   }, [authStatus]);
 
   if (authStatus === 'checking') return <LoadingScreen />;
-  if (authStatus === 'unauthenticated') return <Login />;
+  if (authStatus === 'unauthenticated') {
+    return authMode === 'login' ? (
+      <Login onRegisterClick={() => setAuthMode('register')} />
+    ) : (
+      <Register onLoginClick={() => setAuthMode('login')} />
+    );
+  }
   if (loading) return <LoadingScreen />;
   if (!setupComplete) return <SetupWizard onComplete={() => loadInitialSnapshot()} />;
 

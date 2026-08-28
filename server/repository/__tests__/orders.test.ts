@@ -7,11 +7,12 @@ import { prisma } from '../../prisma/client';
 import { createOrderForSeed, voidOrderForSeed, editOrderReal, getSnapshot } from '../prismaRepository';
 
 const nowIso = () => new Date().toISOString();
+const STORE_ID = 'store-1';
 
 describe('orders (Prisma-backed)', () => {
   it('A: creates a normal order, computing FIFO COGS and writing allocations', async () => {
     const before = await prisma.purchaseBatch.findUniqueOrThrow({ where: { id: 'pb-oil-1' } });
-    const result = await createOrderForSeed('2099-01-01', nowIso(), {
+    const result = await createOrderForSeed(STORE_ID, '2099-01-01', nowIso(), {
       lines: [{ menuId: 'menu-padkrapao-moo', quantity: 1, unitSellingPrice: 50, addOns: [] }],
     });
     expect(result.ok).toBe(true);
@@ -24,21 +25,21 @@ describe('orders (Prisma-backed)', () => {
   });
 
   it('B: hard-blocks an order with insufficient stock and writes nothing', async () => {
-    const snapshotBefore = await getSnapshot();
-    const result = await createOrderForSeed('2099-01-01', nowIso(), {
+    const snapshotBefore = await getSnapshot(STORE_ID);
+    const result = await createOrderForSeed(STORE_ID, '2099-01-01', nowIso(), {
       lines: [{ menuId: 'menu-friedchicken-garlic', quantity: 999999, unitSellingPrice: 45, addOns: [] }],
     });
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.shortages.length).toBeGreaterThan(0);
 
-    const snapshotAfter = await getSnapshot();
+    const snapshotAfter = await getSnapshot(STORE_ID);
     expect(snapshotAfter.orders.length).toBe(snapshotBefore.orders.length);
     expect(snapshotAfter.stockMovements.length).toBe(snapshotBefore.stockMovements.length);
   });
 
   it('C: standard_cost order consumes the movement ledger, not FIFO', async () => {
-    const result = await createOrderForSeed('2099-01-01', nowIso(), {
+    const result = await createOrderForSeed(STORE_ID, '2099-01-01', nowIso(), {
       lines: [{ menuId: 'menu-greencurry-pork', quantity: 1, unitSellingPrice: 55, addOns: [] }],
     });
     expect(result.ok).toBe(true);
@@ -54,7 +55,7 @@ describe('orders (Prisma-backed)', () => {
   });
 
   it('D: void reverses stock and blocks further edit/void, without deleting the order', async () => {
-    const created = await createOrderForSeed('2099-01-01', nowIso(), {
+    const created = await createOrderForSeed(STORE_ID, '2099-01-01', nowIso(), {
       lines: [{ menuId: 'menu-padkrapao-moo', quantity: 1, unitSellingPrice: 50, addOns: [] }],
     });
     expect(created.ok).toBe(true);
@@ -66,7 +67,7 @@ describe('orders (Prisma-backed)', () => {
 
     const batchBeforeVoid = await prisma.purchaseBatch.findUniqueOrThrow({ where: { id: 'pb-oil-1' } });
     const outputBeforeVoid = await prisma.processingOutput.findUniqueOrThrow({ where: { id: porkOutputId } });
-    const voided = await voidOrderForSeed(created.order.id, nowIso());
+    const voided = await voidOrderForSeed(STORE_ID, created.order.id, nowIso());
     expect(voided.ok).toBe(true);
     if (!voided.ok) return;
     expect(voided.order.status).toBe('voided');
@@ -83,10 +84,10 @@ describe('orders (Prisma-backed)', () => {
       expect(outputAfterVoid.status).toBe('active');
     }
 
-    const doubleVoid = await voidOrderForSeed(created.order.id, nowIso());
+    const doubleVoid = await voidOrderForSeed(STORE_ID, created.order.id, nowIso());
     expect(doubleVoid.ok).toBe(false);
 
-    const editAfterVoid = await editOrderReal(created.order.id, {
+    const editAfterVoid = await editOrderReal(STORE_ID, created.order.id, {
       lines: [{ menuId: 'menu-padkrapao-moo', quantity: 2, unitSellingPrice: 50, addOns: [] }],
     });
     expect(editAfterVoid.ok).toBe(false);
@@ -97,13 +98,13 @@ describe('orders (Prisma-backed)', () => {
   });
 
   it('E: edit atomically rolls back to the original order when the new draft is insufficient', async () => {
-    const created = await createOrderForSeed('2099-01-01', nowIso(), {
+    const created = await createOrderForSeed(STORE_ID, '2099-01-01', nowIso(), {
       lines: [{ menuId: 'menu-padkrapao-moo', quantity: 1, unitSellingPrice: 50, addOns: [] }],
     });
     expect(created.ok).toBe(true);
     if (!created.ok) return;
 
-    const edited = await editOrderReal(created.order.id, {
+    const edited = await editOrderReal(STORE_ID, created.order.id, {
       lines: [{ menuId: 'menu-friedchicken-garlic', quantity: 999999, unitSellingPrice: 45, addOns: [] }],
     });
     expect(edited.ok).toBe(false);
@@ -121,13 +122,13 @@ describe('orders (Prisma-backed)', () => {
   // padkrapao-moo's pork supply is a small fixed processing-output pool that earlier tests in
   // this file already draw down, so it isn't a reliable ingredient for these two scenarios.
   it('F: edit re-allocates FIFO for the new draft and restores the old allocation', async () => {
-    const created = await createOrderForSeed('2099-01-01', nowIso(), {
+    const created = await createOrderForSeed(STORE_ID, '2099-01-01', nowIso(), {
       lines: [{ menuId: 'menu-friedchicken-garlic', quantity: 1, unitSellingPrice: 45, addOns: [] }],
     });
     expect(created.ok).toBe(true);
     if (!created.ok) return;
 
-    const edited = await editOrderReal(created.order.id, {
+    const edited = await editOrderReal(STORE_ID, created.order.id, {
       lines: [{ menuId: 'menu-friedchicken-garlic', quantity: 2, unitSellingPrice: 45, addOns: [] }],
     });
     expect(edited.ok).toBe(true);
@@ -142,8 +143,8 @@ describe('orders (Prisma-backed)', () => {
 
   it('G: order numbers are unique and sequential per selling date', async () => {
     const d = '2099-02-02';
-    const r1 = await createOrderForSeed(d, nowIso(), { lines: [{ menuId: 'menu-friedchicken-garlic', quantity: 1, unitSellingPrice: 45, addOns: [] }] });
-    const r2 = await createOrderForSeed(d, nowIso(), { lines: [{ menuId: 'menu-friedchicken-garlic', quantity: 1, unitSellingPrice: 45, addOns: [] }] });
+    const r1 = await createOrderForSeed(STORE_ID, d, nowIso(), { lines: [{ menuId: 'menu-friedchicken-garlic', quantity: 1, unitSellingPrice: 45, addOns: [] }] });
+    const r2 = await createOrderForSeed(STORE_ID, d, nowIso(), { lines: [{ menuId: 'menu-friedchicken-garlic', quantity: 1, unitSellingPrice: 45, addOns: [] }] });
     expect(r1.ok && r2.ok).toBe(true);
     if (!r1.ok || !r2.ok) return;
     expect(r2.order.orderNumber).toBe(r1.order.orderNumber + 1);

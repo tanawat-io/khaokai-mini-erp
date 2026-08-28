@@ -35,7 +35,6 @@ import {
   orderInclude,
 } from './mappers';
 
-import type { RepositoryContract } from '../../src/repository/contract';
 import type { RepositorySnapshot, CatalogResult } from '../../src/repository/mockRepository';
 import type { Ingredient, Menu, AddOn, Order, ProcessingBatch, PurchaseBatch, Store, WasteRecord, StockMovement } from '../../src/domain/types';
 import { createOrder, editOrder, voidOrder, type OrderEngineContext, type OrderResult } from '../../src/domain/orderEngine';
@@ -62,19 +61,19 @@ const genId = () => randomUUID();
 
 // --- Snapshot ----------------------------------------------------------------------------------
 
-export async function getSnapshot(): Promise<RepositorySnapshot> {
+export async function getSnapshot(storeId: string): Promise<RepositorySnapshot> {
   const [ingredients, purchaseBatches, processingBatches, processingOutputs, wasteRecords, menus, addOns, orders, stockMovements, store] =
     await Promise.all([
-      prisma.ingredient.findMany(),
-      prisma.purchaseBatch.findMany(),
-      prisma.processingBatch.findMany(),
-      prisma.processingOutput.findMany(),
-      prisma.wasteRecord.findMany(),
-      prisma.menu.findMany({ include: { recipe: true } }),
-      prisma.addOn.findMany({ include: { recipe: true } }),
-      prisma.order.findMany({ include: orderInclude }),
-      prisma.stockMovement.findMany(),
-      prisma.store.findFirstOrThrow(),
+      prisma.ingredient.findMany({ where: { storeId } }),
+      prisma.purchaseBatch.findMany({ where: { storeId } }),
+      prisma.processingBatch.findMany({ where: { storeId } }),
+      prisma.processingOutput.findMany({ where: { storeId } }),
+      prisma.wasteRecord.findMany({ where: { storeId } }),
+      prisma.menu.findMany({ where: { storeId }, include: { recipe: true } }),
+      prisma.addOn.findMany({ where: { storeId }, include: { recipe: true } }),
+      prisma.order.findMany({ where: { storeId }, include: orderInclude }),
+      prisma.stockMovement.findMany({ where: { storeId } }),
+      prisma.store.findUniqueOrThrow({ where: { id: storeId } }),
     ]);
 
   return {
@@ -93,12 +92,13 @@ export async function getSnapshot(): Promise<RepositorySnapshot> {
 
 // --- Ingredients ---------------------------------------------------------------------------------
 
-export async function createIngredient(input: IngredientInput): Promise<CatalogResult<Ingredient>> {
+export async function createIngredient(storeId: string, input: IngredientInput): Promise<CatalogResult<Ingredient>> {
   const check = validateIngredientInput(input);
   if (!check.ok) return { ok: false, errors: check.errors };
   const row = await prisma.ingredient.create({
     data: {
       id: genId(),
+      storeId,
       name: input.name.trim(),
       category: input.category.trim(),
       baseUnit: input.baseUnit.trim(),
@@ -111,8 +111,8 @@ export async function createIngredient(input: IngredientInput): Promise<CatalogR
   return { ok: true, item: toIngredient(row) };
 }
 
-export async function updateIngredient(id: string, input: IngredientInput): Promise<CatalogResult<Ingredient>> {
-  const existing = await prisma.ingredient.findUnique({ where: { id } });
+export async function updateIngredient(storeId: string, id: string, input: IngredientInput): Promise<CatalogResult<Ingredient>> {
+  const existing = await prisma.ingredient.findFirst({ where: { id, storeId } });
   if (!existing) return { ok: false, errors: ['ไม่พบวัตถุดิบนี้'] };
   const check = validateIngredientInput(input);
   if (!check.ok) return { ok: false, errors: check.errors };
@@ -130,26 +130,27 @@ export async function updateIngredient(id: string, input: IngredientInput): Prom
   return { ok: true, item: toIngredient(row) };
 }
 
-export async function setIngredientActive(id: string, active: boolean): Promise<CatalogResult<Ingredient>> {
-  const existing = await prisma.ingredient.findUnique({ where: { id } });
+export async function setIngredientActive(storeId: string, id: string, active: boolean): Promise<CatalogResult<Ingredient>> {
+  const existing = await prisma.ingredient.findFirst({ where: { id, storeId } });
   if (!existing) return { ok: false, errors: ['ไม่พบวัตถุดิบนี้'] };
   const row = await prisma.ingredient.update({ where: { id }, data: { active } });
   return { ok: true, item: toIngredient(row) };
 }
 
-async function ingredientsMap(): Promise<Map<string, Ingredient>> {
-  const rows = await prisma.ingredient.findMany();
+async function ingredientsMap(storeId: string): Promise<Map<string, Ingredient>> {
+  const rows = await prisma.ingredient.findMany({ where: { storeId } });
   return new Map(rows.map((r) => [r.id, toIngredient(r)]));
 }
 
 // --- Menus / Add-ons -------------------------------------------------------------------------
 
-export async function createMenu(input: CatalogItemInput): Promise<CatalogResult<Menu>> {
-  const check = validateCatalogItemInput(input, await ingredientsMap());
+export async function createMenu(storeId: string, input: CatalogItemInput): Promise<CatalogResult<Menu>> {
+  const check = validateCatalogItemInput(input, await ingredientsMap(storeId));
   if (!check.ok) return { ok: false, errors: check.errors };
   const row = await prisma.menu.create({
     data: {
       id: genId(),
+      storeId,
       name: input.name.trim(),
       sellingPrice: input.sellingPrice,
       active: true,
@@ -160,10 +161,10 @@ export async function createMenu(input: CatalogItemInput): Promise<CatalogResult
   return { ok: true, item: toMenu(row) };
 }
 
-export async function updateMenu(id: string, input: CatalogItemInput): Promise<CatalogResult<Menu>> {
-  const existing = await prisma.menu.findUnique({ where: { id } });
+export async function updateMenu(storeId: string, id: string, input: CatalogItemInput): Promise<CatalogResult<Menu>> {
+  const existing = await prisma.menu.findFirst({ where: { id, storeId } });
   if (!existing) return { ok: false, errors: ['ไม่พบเมนูนี้'] };
-  const check = validateCatalogItemInput(input, await ingredientsMap());
+  const check = validateCatalogItemInput(input, await ingredientsMap(storeId));
   if (!check.ok) return { ok: false, errors: check.errors };
   const row = await prisma.$transaction(async (tx) => {
     await tx.menuItem.deleteMany({ where: { menuId: id } });
@@ -180,19 +181,20 @@ export async function updateMenu(id: string, input: CatalogItemInput): Promise<C
   return { ok: true, item: toMenu(row) };
 }
 
-export async function setMenuActive(id: string, active: boolean): Promise<CatalogResult<Menu>> {
-  const existing = await prisma.menu.findUnique({ where: { id } });
+export async function setMenuActive(storeId: string, id: string, active: boolean): Promise<CatalogResult<Menu>> {
+  const existing = await prisma.menu.findFirst({ where: { id, storeId } });
   if (!existing) return { ok: false, errors: ['ไม่พบเมนูนี้'] };
   const row = await prisma.menu.update({ where: { id }, data: { active }, include: { recipe: true } });
   return { ok: true, item: toMenu(row) };
 }
 
-export async function createAddOn(input: CatalogItemInput): Promise<CatalogResult<AddOn>> {
-  const check = validateCatalogItemInput(input, await ingredientsMap());
+export async function createAddOn(storeId: string, input: CatalogItemInput): Promise<CatalogResult<AddOn>> {
+  const check = validateCatalogItemInput(input, await ingredientsMap(storeId));
   if (!check.ok) return { ok: false, errors: check.errors };
   const row = await prisma.addOn.create({
     data: {
       id: genId(),
+      storeId,
       name: input.name.trim(),
       sellingPrice: input.sellingPrice,
       active: true,
@@ -203,10 +205,10 @@ export async function createAddOn(input: CatalogItemInput): Promise<CatalogResul
   return { ok: true, item: toAddOn(row) };
 }
 
-export async function updateAddOn(id: string, input: CatalogItemInput): Promise<CatalogResult<AddOn>> {
-  const existing = await prisma.addOn.findUnique({ where: { id } });
+export async function updateAddOn(storeId: string, id: string, input: CatalogItemInput): Promise<CatalogResult<AddOn>> {
+  const existing = await prisma.addOn.findFirst({ where: { id, storeId } });
   if (!existing) return { ok: false, errors: ['ไม่พบ Add-on นี้'] };
-  const check = validateCatalogItemInput(input, await ingredientsMap());
+  const check = validateCatalogItemInput(input, await ingredientsMap(storeId));
   if (!check.ok) return { ok: false, errors: check.errors };
   const row = await prisma.$transaction(async (tx) => {
     await tx.addOnItem.deleteMany({ where: { addOnId: id } });
@@ -223,8 +225,8 @@ export async function updateAddOn(id: string, input: CatalogItemInput): Promise<
   return { ok: true, item: toAddOn(row) };
 }
 
-export async function setAddOnActive(id: string, active: boolean): Promise<CatalogResult<AddOn>> {
-  const existing = await prisma.addOn.findUnique({ where: { id } });
+export async function setAddOnActive(storeId: string, id: string, active: boolean): Promise<CatalogResult<AddOn>> {
+  const existing = await prisma.addOn.findFirst({ where: { id, storeId } });
   if (!existing) return { ok: false, errors: ['ไม่พบ Add-on นี้'] };
   const row = await prisma.addOn.update({ where: { id }, data: { active }, include: { recipe: true } });
   return { ok: true, item: toAddOn(row) };
@@ -232,10 +234,10 @@ export async function setAddOnActive(id: string, active: boolean): Promise<Catal
 
 // --- Purchases / Processing / Waste -----------------------------------------------------------
 
-export async function createPurchase(input: PurchaseInput): Promise<CatalogResult<PurchaseBatch>> {
-  const check = validatePurchaseInput(input, await ingredientsMap());
+export async function createPurchase(storeId: string, input: PurchaseInput): Promise<CatalogResult<PurchaseBatch>> {
+  const check = validatePurchaseInput(input, await ingredientsMap(storeId));
   if (!check.ok) return { ok: false, errors: check.errors };
-  const ingredient = await prisma.ingredient.findUnique({ where: { id: input.ingredientId } });
+  const ingredient = await prisma.ingredient.findFirst({ where: { id: input.ingredientId, storeId } });
   const unitCost = input.quantity > 0 ? round2(input.totalCost / input.quantity) : 0;
   const batchId = genId();
 
@@ -243,6 +245,7 @@ export async function createPurchase(input: PurchaseInput): Promise<CatalogResul
     await tx.purchaseBatch.create({
       data: {
         id: batchId,
+        storeId,
         ingredientId: input.ingredientId,
         purchaseDate: input.purchaseDate,
         quantity: input.quantity,
@@ -258,6 +261,7 @@ export async function createPurchase(input: PurchaseInput): Promise<CatalogResul
       await tx.stockMovement.create({
         data: {
           id: genId(),
+          storeId,
           ingredientId: input.ingredientId,
           sourceType: 'standard_cost',
           quantityDelta: input.quantity,
@@ -274,8 +278,8 @@ export async function createPurchase(input: PurchaseInput): Promise<CatalogResul
   return { ok: true, item: toPurchaseBatch(row) };
 }
 
-export async function createProcessing(input: ProcessingInput, nowIso: string): Promise<CatalogResult<ProcessingBatch>> {
-  const sourceBatchRow = await prisma.purchaseBatch.findUnique({ where: { id: input.sourceBatchId } });
+export async function createProcessing(storeId: string, input: ProcessingInput, nowIso: string): Promise<CatalogResult<ProcessingBatch>> {
+  const sourceBatchRow = await prisma.purchaseBatch.findFirst({ where: { id: input.sourceBatchId, storeId } });
   const sourceBatch = sourceBatchRow ? toPurchaseBatch(sourceBatchRow) : undefined;
   const check = validateProcessingInput(input, sourceBatch);
   if (!check.ok) return { ok: false, errors: check.errors };
@@ -294,6 +298,7 @@ export async function createProcessing(input: ProcessingInput, nowIso: string): 
     await tx.processingBatch.create({
       data: {
         id: processingBatchId,
+        storeId,
         sourceBatchId: sourceBatch!.id,
         ingredientId: sourceBatch!.ingredientId,
         processedAt: nowIso,
@@ -307,6 +312,7 @@ export async function createProcessing(input: ProcessingInput, nowIso: string): 
       await tx.processingOutput.create({
         data: {
           id: genId(),
+          storeId,
           processingBatchId,
           ingredientId: sourceBatch!.ingredientId,
           quantity: o.quantity,
@@ -326,6 +332,7 @@ export async function createProcessing(input: ProcessingInput, nowIso: string): 
       await tx.wasteRecord.create({
         data: {
           id: genId(),
+          storeId,
           ingredientId: sourceBatch!.ingredientId,
           sourceType: 'purchase_batch',
           sourceBatchId: sourceBatch!.id,
@@ -344,13 +351,13 @@ export async function createProcessing(input: ProcessingInput, nowIso: string): 
   return { ok: true, item: toProcessingBatch(row) };
 }
 
-export async function recordWaste(input: WasteInput, nowIso: string): Promise<CatalogResult<WasteRecord>> {
-  const ingredientRow = await prisma.ingredient.findUnique({ where: { id: input.ingredientId } });
+export async function recordWaste(storeId: string, input: WasteInput, nowIso: string): Promise<CatalogResult<WasteRecord>> {
+  const ingredientRow = await prisma.ingredient.findFirst({ where: { id: input.ingredientId, storeId } });
   if (!ingredientRow) return { ok: false, errors: ['ไม่พบวัตถุดิบนี้'] };
   const ingredient = toIngredient(ingredientRow);
 
   if (ingredient.trackingType === 'standard_cost') {
-    const movements = (await prisma.stockMovement.findMany({ where: { ingredientId: input.ingredientId } })).map(toStockMovement);
+    const movements = (await prisma.stockMovement.findMany({ where: { ingredientId: input.ingredientId, storeId } })).map(toStockMovement);
     const available = getStandardCostAvailableQuantity(input.ingredientId, movements);
     const check = validateWasteInput(input, undefined, available);
     if (!check.ok) return { ok: false, errors: check.errors };
@@ -361,6 +368,7 @@ export async function recordWaste(input: WasteInput, nowIso: string): Promise<Ca
       await tx.wasteRecord.create({
         data: {
           id: wasteId,
+          storeId,
           ingredientId: input.ingredientId,
           sourceType: 'standard_cost',
           quantity: input.quantity,
@@ -373,6 +381,7 @@ export async function recordWaste(input: WasteInput, nowIso: string): Promise<Ca
       await tx.stockMovement.create({
         data: {
           id: genId(),
+          storeId,
           ingredientId: input.ingredientId,
           sourceType: 'standard_cost',
           quantityDelta: round2(-input.quantity),
@@ -388,8 +397,8 @@ export async function recordWaste(input: WasteInput, nowIso: string): Promise<Ca
   }
 
   const [purchaseBatches, processingOutputs] = await Promise.all([
-    prisma.purchaseBatch.findMany({ where: { ingredientId: input.ingredientId } }),
-    prisma.processingOutput.findMany({ where: { ingredientId: input.ingredientId } }),
+    prisma.purchaseBatch.findMany({ where: { ingredientId: input.ingredientId, storeId } }),
+    prisma.processingOutput.findMany({ where: { ingredientId: input.ingredientId, storeId } }),
   ]);
   const lot = getEligibleLots(
     input.ingredientId,
@@ -420,6 +429,7 @@ export async function recordWaste(input: WasteInput, nowIso: string): Promise<Ca
     await tx.wasteRecord.create({
       data: {
         id: wasteId,
+        storeId,
         ingredientId: input.ingredientId,
         sourceType: input.sourceType,
         sourceBatchId: input.sourceBatchId,
@@ -437,10 +447,9 @@ export async function recordWaste(input: WasteInput, nowIso: string): Promise<Ca
 
 // --- Settings ------------------------------------------------------------------------------------
 
-export async function updateStoreName(name: string): Promise<CatalogResult<Store>> {
+export async function updateStoreName(storeId: string, name: string): Promise<CatalogResult<Store>> {
   if (!name.trim()) return { ok: false, errors: ['กรุณาระบุชื่อร้าน'] };
-  const store = await prisma.store.findFirstOrThrow();
-  const row = await prisma.store.update({ where: { id: store.id }, data: { name: name.trim() } });
+  const row = await prisma.store.update({ where: { id: storeId }, data: { name: name.trim() } });
   return { ok: true, item: toStore(row) };
 }
 
@@ -449,15 +458,15 @@ export async function updateStoreName(name: string): Promise<CatalogResult<Store
 // design decision — see plan) rather than trusting the caller's `sellingDate` argument, since it
 // drives order-number sequencing and Dashboard "today" aggregates.
 
-async function hydrateOrderContext(nowIso: string): Promise<OrderEngineContext> {
+async function hydrateOrderContext(storeId: string, nowIso: string): Promise<OrderEngineContext> {
   const [menus, addOns, ingredients, purchaseBatches, processingOutputs, stockMovements, orders] = await Promise.all([
-    prisma.menu.findMany({ include: { recipe: true } }),
-    prisma.addOn.findMany({ include: { recipe: true } }),
-    prisma.ingredient.findMany(),
-    prisma.purchaseBatch.findMany(),
-    prisma.processingOutput.findMany(),
-    prisma.stockMovement.findMany(),
-    prisma.order.findMany({ include: orderInclude }),
+    prisma.menu.findMany({ where: { storeId }, include: { recipe: true } }),
+    prisma.addOn.findMany({ where: { storeId }, include: { recipe: true } }),
+    prisma.ingredient.findMany({ where: { storeId } }),
+    prisma.purchaseBatch.findMany({ where: { storeId } }),
+    prisma.processingOutput.findMany({ where: { storeId } }),
+    prisma.stockMovement.findMany({ where: { storeId } }),
+    prisma.order.findMany({ where: { storeId }, include: orderInclude }),
   ]);
 
   return {
@@ -503,9 +512,9 @@ function newStockMovements(ctx: OrderEngineContext, beforeCount: number): StockM
 // tested persistence path. `createOrderReal` below is the ONLY caller reachable from the HTTP
 // API, and it hardcodes the server's real current date — this function itself does not decide
 // that policy, so it staying flexible does not weaken the "server is authoritative" guarantee.
-async function createOrderInternal(sellingDate: string, nowIso: string, draft: OrderDraft): Promise<OrderResult> {
+async function createOrderInternal(storeId: string, sellingDate: string, nowIso: string, draft: OrderDraft): Promise<OrderResult> {
   return orderMutex.runExclusive(async () => {
-    const ctx = await hydrateOrderContext(nowIso);
+    const ctx = await hydrateOrderContext(storeId, nowIso);
     const movementsBefore = ctx.stockMovements.length;
 
     const result = createOrder(draft, ctx, sellingDate);
@@ -518,6 +527,7 @@ async function createOrderInternal(sellingDate: string, nowIso: string, draft: O
       await tx.order.create({
         data: {
           id: result.order.id,
+          storeId,
           orderNumber: result.order.orderNumber,
           sellingDate: result.order.sellingDate,
           soldAt: result.order.soldAt,
@@ -562,7 +572,7 @@ async function createOrderInternal(sellingDate: string, nowIso: string, draft: O
       });
       if (movements.length > 0) {
         await tx.stockMovement.createMany({
-          data: movements.map((m) => ({ ...m, orderId: result.order.id })),
+          data: movements.map((m) => ({ ...m, storeId, orderId: result.order.id })),
         });
       }
       await persistTouchedBatches(tx, ctx, touchedAllocations);
@@ -573,21 +583,21 @@ async function createOrderInternal(sellingDate: string, nowIso: string, draft: O
 }
 
 /** HTTP-facing: sellingDate is always the server's real current date — never the caller's (Phase 3B §21). */
-export async function createOrderReal(sellingDate: string, draft: OrderDraft): Promise<OrderResult> {
+export async function createOrderReal(storeId: string, sellingDate: string, draft: OrderDraft): Promise<OrderResult> {
   void sellingDate; // kept in the contract signature for mock-compat; deliberately ignored here
   const nowIso = new Date().toISOString();
-  return createOrderInternal(nowIso.slice(0, 10), nowIso, draft);
+  return createOrderInternal(storeId, nowIso.slice(0, 10), nowIso, draft);
 }
 
 /** Seed-only: lets server/prisma/seed.ts reproduce mockRepository.ts's historical order dates. */
-export async function createOrderForSeed(sellingDate: string, nowIso: string, draft: OrderDraft): Promise<OrderResult> {
-  return createOrderInternal(sellingDate, nowIso, draft);
+export async function createOrderForSeed(storeId: string, sellingDate: string, nowIso: string, draft: OrderDraft): Promise<OrderResult> {
+  return createOrderInternal(storeId, sellingDate, nowIso, draft);
 }
 
-export async function editOrderReal(orderId: string, draft: OrderDraft): Promise<OrderResult> {
+export async function editOrderReal(storeId: string, orderId: string, draft: OrderDraft): Promise<OrderResult> {
   return orderMutex.runExclusive(async () => {
     const nowIso = new Date().toISOString();
-    const ctx = await hydrateOrderContext(nowIso);
+    const ctx = await hydrateOrderContext(storeId, nowIso);
     const preEdit = ctx.orders.find((o) => o.id === orderId);
     const preEditAllocations = preEdit ? [...preEdit.fifoAllocations] : [];
     const movementsBefore = ctx.stockMovements.length;
@@ -644,7 +654,7 @@ export async function editOrderReal(orderId: string, draft: OrderDraft): Promise
         },
       });
       if (movements.length > 0) {
-        await tx.stockMovement.createMany({ data: movements.map((m) => ({ ...m, orderId })) });
+        await tx.stockMovement.createMany({ data: movements.map((m) => ({ ...m, storeId, orderId })) });
       }
       await persistTouchedBatches(tx, ctx, touchedAllocations);
     });
@@ -653,9 +663,9 @@ export async function editOrderReal(orderId: string, draft: OrderDraft): Promise
   });
 }
 
-async function voidOrderInternal(orderId: string, nowIso: string): Promise<OrderResult> {
+async function voidOrderInternal(storeId: string, orderId: string, nowIso: string): Promise<OrderResult> {
   return orderMutex.runExclusive(async () => {
-    const ctx = await hydrateOrderContext(nowIso);
+    const ctx = await hydrateOrderContext(storeId, nowIso);
     const movementsBefore = ctx.stockMovements.length;
 
     const result = voidOrder(orderId, ctx);
@@ -667,7 +677,7 @@ async function voidOrderInternal(orderId: string, nowIso: string): Promise<Order
     await prisma.$transaction(async (tx) => {
       await tx.order.update({ where: { id: orderId }, data: { status: 'voided', voidedAt: result.order.voidedAt } });
       if (movements.length > 0) {
-        await tx.stockMovement.createMany({ data: movements.map((m) => ({ ...m, orderId })) });
+        await tx.stockMovement.createMany({ data: movements.map((m) => ({ ...m, storeId, orderId })) });
       }
       await persistTouchedBatches(tx, ctx, touchedAllocations);
     });
@@ -676,33 +686,11 @@ async function voidOrderInternal(orderId: string, nowIso: string): Promise<Order
   });
 }
 
-export async function voidOrderReal(orderId: string): Promise<OrderResult> {
-  return voidOrderInternal(orderId, new Date().toISOString());
+export async function voidOrderReal(storeId: string, orderId: string): Promise<OrderResult> {
+  return voidOrderInternal(storeId, orderId, new Date().toISOString());
 }
 
 /** Seed-only: lets server/prisma/seed.ts reproduce mockRepository.ts's historical void timestamp. */
-export async function voidOrderForSeed(orderId: string, nowIso: string): Promise<OrderResult> {
-  return voidOrderInternal(orderId, nowIso);
+export async function voidOrderForSeed(storeId: string, orderId: string, nowIso: string): Promise<OrderResult> {
+  return voidOrderInternal(storeId, orderId, nowIso);
 }
-
-// --- Contract binding ----------------------------------------------------------------------------
-
-export const prismaRepository: RepositoryContract = {
-  getSnapshot,
-  createOrder: createOrderReal,
-  editOrder: editOrderReal,
-  voidOrder: voidOrderReal,
-  createIngredient,
-  updateIngredient,
-  setIngredientActive,
-  createMenu,
-  updateMenu,
-  setMenuActive,
-  createAddOn,
-  updateAddOn,
-  setAddOnActive,
-  createPurchase,
-  createProcessing,
-  recordWaste,
-  updateStoreName,
-};

@@ -18,6 +18,7 @@ describe('infra — PostgreSQL FK enforcement (Supabase)', () => {
       prisma.purchaseBatch.create({
         data: {
           id: 'infra-fk-test-2',
+          storeId: 'store-1',
           ingredientId: 'non-existent-ing-2',
           purchaseDate: '2026-01-01',
           quantity: 1,

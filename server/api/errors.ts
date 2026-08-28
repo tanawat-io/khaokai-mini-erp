@@ -14,7 +14,8 @@ export type ErrorCode =
   | 'INVALID_STATUS'
   | 'STANDARD_COST_UNAVAILABLE'
   | 'NOT_FOUND'
-  | 'UNAUTHENTICATED';
+  | 'UNAUTHENTICATED'
+  | 'USERNAME_TAKEN';
 
 export function sendError(res: Response, status: number, code: ErrorCode, message: string, details?: unknown) {
   res.status(status).json({ error: { code, message, details } });

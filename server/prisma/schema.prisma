@@ -35,12 +35,25 @@ model Store {
   setupComplete  Boolean  @default(false)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+
+  owner              User?
+  ingredients        Ingredient[]
+  purchaseBatches    PurchaseBatch[]
+  processingBatches  ProcessingBatch[]
+  processingOutputs  ProcessingOutput[]
+  wasteRecords       WasteRecord[]
+  menus              Menu[]
+  addOns             AddOn[]
+  orders             Order[]
+  stockMovements     StockMovement[]
 }
 
 model User {
   id           String    @id @default(cuid())
   username     String    @unique
   passwordHash String
+  storeId      String    @unique
+  store        Store     @relation(fields: [storeId], references: [id])
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
   sessions     Session[]
@@ -60,6 +73,8 @@ model Session {
 
 model Ingredient {
   id                 String   @id @default(cuid())
+  storeId            String
+  store              Store    @relation(fields: [storeId], references: [id])
   name               String
   category           String
   baseUnit           String
@@ -79,6 +94,7 @@ model Ingredient {
   stockMovements     StockMovement[]
   fifoAllocations    FifoAllocation[]
 
+  @@index([storeId])
   @@index([category])
 }
 
@@ -86,6 +102,8 @@ model Ingredient {
 
 model PurchaseBatch {
   id                String   @id @default(cuid())
+  storeId           String
+  store             Store    @relation(fields: [storeId], references: [id])
   ingredientId      String
   ingredient        Ingredient @relation(fields: [ingredientId], references: [id])
   purchaseDate      String // ISO date, matches domain PurchaseBatch.purchaseDate
@@ -101,6 +119,7 @@ model PurchaseBatch {
 
   processingBatches ProcessingBatch[]
 
+  @@index([storeId])
   @@index([ingredientId])
   @@index([status])
   @@index([purchaseDate])
@@ -110,6 +129,8 @@ model PurchaseBatch {
 
 model ProcessingBatch {
   id             String   @id @default(cuid())
+  storeId        String
+  store          Store    @relation(fields: [storeId], references: [id])
   sourceBatchId  String
   sourceBatch    PurchaseBatch @relation(fields: [sourceBatchId], references: [id])
   ingredientId   String
@@ -122,6 +143,7 @@ model ProcessingBatch {
 
   outputs        ProcessingOutput[]
 
+  @@index([storeId])
   @@index([ingredientId])
   @@index([sourceBatchId])
 }
@@ -130,6 +152,8 @@ model ProcessingBatch {
 
 model ProcessingOutput {
   id                 String   @id @default(cuid())
+  storeId            String
+  store              Store    @relation(fields: [storeId], references: [id])
   processingBatchId  String
   processingBatch    ProcessingBatch @relation(fields: [processingBatchId], references: [id])
   ingredientId       String
@@ -144,6 +168,7 @@ model ProcessingOutput {
   status             String // active | void
   createdAt          String // ISO datetime, matches domain ProcessingOutput.createdAt
 
+  @@index([storeId])
   @@index([ingredientId])
   @@index([processingBatchId])
   @@index([status])
@@ -153,6 +178,8 @@ model ProcessingOutput {
 
 model WasteRecord {
   id                 String   @id @default(cuid())
+  storeId            String
+  store              Store    @relation(fields: [storeId], references: [id])
   ingredientId       String
   ingredient         Ingredient @relation(fields: [ingredientId], references: [id])
   sourceType         String // purchase_batch | processing_output | standard_cost
@@ -164,6 +191,7 @@ model WasteRecord {
   reason             String
   createdAt          String // ISO datetime, matches domain WasteRecord.createdAt
 
+  @@index([storeId])
   @@index([ingredientId])
   @@index([sourceBatchId])
 }
@@ -172,6 +200,8 @@ model WasteRecord {
 
 model Menu {
   id           String   @id @default(cuid())
+  storeId      String
+  store        Store    @relation(fields: [storeId], references: [id])
   name         String
   sellingPrice Float
   active       Boolean  @default(true)
@@ -180,6 +210,8 @@ model Menu {
 
   recipe       MenuItem[]
   orderItems   OrderItem[]
+
+  @@index([storeId])
 }
 
 // Recipe line. `ingredientId` only (DATABASE.md §11 corrected — see header note); no separate
@@ -200,6 +232,8 @@ model MenuItem {
 
 model AddOn {
   id           String   @id @default(cuid())
+  storeId      String
+  store        Store    @relation(fields: [storeId], references: [id])
   name         String
   sellingPrice Float
   active       Boolean  @default(true)
@@ -208,6 +242,8 @@ model AddOn {
 
   recipe       AddOnItem[]
   orderItemAddOns OrderItemAddOn[]
+
+  @@index([storeId])
 }
 
 model AddOnItem {
@@ -226,6 +262,8 @@ model AddOnItem {
 
 model Order {
   id           String   @id @default(cuid())
+  storeId      String
+  store        Store    @relation(fields: [storeId], references: [id])
   orderNumber  Int
   sellingDate  String // ISO date
   soldAt       String // ISO datetime
@@ -242,7 +280,8 @@ model Order {
   fifoAllocations FifoAllocation[]
   stockMovements  StockMovement[]
 
-  @@unique([sellingDate, orderNumber])
+  @@unique([storeId, sellingDate, orderNumber])
+  @@index([storeId])
   @@index([status])
   @@index([sellingDate])
 }
@@ -285,6 +324,8 @@ model OrderItemAddOn {
 
 model StockMovement {
   id             String @id @default(cuid())
+  storeId        String
+  store          Store  @relation(fields: [storeId], references: [id])
   ingredientId   String
   ingredient     Ingredient @relation(fields: [ingredientId], references: [id])
   sourceType     String // purchase_batch | processing_output | standard_cost
@@ -297,6 +338,7 @@ model StockMovement {
   order          Order?  @relation(fields: [orderId], references: [id])
   createdAt      String // ISO datetime, matches domain StockMovement.createdAt
 
+  @@index([storeId])
   @@index([ingredientId])
   @@index([referenceId])
   @@index([orderId])
