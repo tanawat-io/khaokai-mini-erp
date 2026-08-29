@@ -42,6 +42,15 @@ export function Processing() {
     [purchaseBatches, ingredientId]
   );
 
+  function sourceBatchLabel(b: (typeof purchaseBatches)[number]): string {
+    const ref = b.reference?.trim();
+    const date = formatDateTimeThai(b.purchaseDate);
+    const refPart = ref ? `อ้างอิง ${ref} · ` : '';
+    return `${refPart}${date} · เหลือ ${b.remainingQuantity} ${b.unit} @ ฿${formatBaht(b.unitCost)}`;
+  }
+
+  const sourceBatchMap = useMemo(() => new Map(purchaseBatches.map((b) => [b.id, b])), [purchaseBatches]);
+
   const sortedBatches = useMemo(() => [...processingBatches].sort((a, b) => (a.processedAt < b.processedAt ? 1 : -1)), [processingBatches]);
 
   // Voidable only while every output this batch created is still fully untouched — mirrors the
@@ -182,7 +191,12 @@ export function Processing() {
                   </div>
                 </div>
                 <div className="mt-1 text-sm text-warmgray-500">
-                  นำเข้า {pb.inputQuantity} {ingredient?.baseUnit ?? ''} · ต้นทุนนำเข้า ฿{formatBaht(pb.inputCost)} · จากล็อตซื้อ {pb.sourceBatchId}
+                  นำเข้า {pb.inputQuantity} {ingredient?.baseUnit ?? ''} · ต้นทุนนำเข้า ฿{formatBaht(pb.inputCost)} · จากล็อตซื้อ{' '}
+                  {(() => {
+                    const src = sourceBatchMap.get(pb.sourceBatchId);
+                    if (!src) return '—';
+                    return sourceBatchLabel(src);
+                  })()}
                 </div>
                 <div className="mt-3 overflow-x-auto">
                   <table className="w-full min-w-[420px] text-sm">
@@ -253,7 +267,7 @@ export function Processing() {
                 >
                   {sourceBatchOptions.map((b) => (
                     <option key={b.id} value={b.id}>
-                      {b.reference ?? b.id} · {formatDateTimeThai(b.purchaseDate)} · เหลือ {b.remainingQuantity} {b.unit} @ ฿{formatBaht(b.unitCost)}
+                      {sourceBatchLabel(b)}
                     </option>
                   ))}
                 </select>

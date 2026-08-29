@@ -5,6 +5,7 @@ import type { TrackingType } from '@/domain/types';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
+import { Modal } from '@/components/ui/Modal';
 
 const trackingTypeLabel: Record<TrackingType, string> = {
   raw_by_weight: 'วัตถุดิบดิบ (ตามน้ำหนัก)',
@@ -24,6 +25,16 @@ export function Ingredients() {
   const [saving, setSaving] = useState(false);
 
   const sorted = useMemo(() => [...ingredients].sort((a, b) => a.name.localeCompare(b.name, 'th')), [ingredients]);
+
+  const grouped = useMemo(() => {
+    const map = new Map<string, typeof ingredients>();
+    for (const ing of sorted) {
+      const key = ing.category?.trim() || 'อื่นๆ';
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(ing);
+    }
+    return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0], 'th'));
+  }, [sorted]);
 
   function openCreate() {
     setForm(emptyInput);
@@ -84,153 +95,166 @@ export function Ingredients() {
         <Button onClick={openCreate}>+ เพิ่มวัตถุดิบ</Button>
       </div>
 
-      {/* Mobile: cards */}
-      <div className="space-y-2 md:hidden">
-        {sorted.map((i) => (
-          <Card key={i.id} className={`cursor-pointer ${!i.active ? 'opacity-60' : ''}`} onClick={() => openEdit(i.id)}>
-            <div className="flex items-center justify-between">
-              <div className="font-medium text-warmgray-900">{i.name}</div>
-              {!i.active && <Badge tone="neutral">ปิดใช้งาน</Badge>}
+      {/* Mobile: cards grouped by category */}
+      <div className="space-y-4 md:hidden">
+        {grouped.map(([cat, items]) => (
+          <div key={cat}>
+            <div className="mb-1 px-1 text-xs font-semibold uppercase tracking-wide text-warmgray-500">{cat} · {items.length}</div>
+            <div className="space-y-2">
+              {items.map((i) => (
+                <Card key={i.id} className={`cursor-pointer ${!i.active ? 'opacity-60' : ''}`} onClick={() => openEdit(i.id)}>
+                  <div className="flex items-center justify-between">
+                    <div className="font-medium text-warmgray-900">{i.name}</div>
+                    {!i.active && <Badge tone="neutral">ปิดใช้งาน</Badge>}
+                  </div>
+                  <div className="mt-1 text-sm text-warmgray-500">
+                    หน่วย {i.baseUnit} · {trackingTypeLabel[i.trackingType]}
+                  </div>
+                </Card>
+              ))}
             </div>
-            <div className="mt-1 text-sm text-warmgray-500">
-              {i.category} · หน่วย {i.baseUnit} · {trackingTypeLabel[i.trackingType]}
-            </div>
-          </Card>
+          </div>
         ))}
+        {grouped.length === 0 && <Card className="py-10 text-center text-warmgray-500">ยังไม่มีวัตถุดิบ</Card>}
       </div>
 
-      {/* Desktop: table */}
-      <Card className="hidden overflow-hidden p-0 md:block">
-        <table className="w-full text-sm">
-          <thead className="bg-warmgray-50 text-left text-xs uppercase tracking-wide text-warmgray-500">
-            <tr>
-              <th className="px-4 py-3 font-medium">ชื่อ</th>
-              <th className="px-4 py-3 font-medium">หมวดหมู่</th>
-              <th className="px-4 py-3 font-medium">หน่วยฐาน</th>
-              <th className="px-4 py-3 font-medium">วิธีติดตาม</th>
-              <th className="px-4 py-3 font-medium">สถานะ</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-warmgray-100">
-            {sorted.map((i) => (
-              <tr key={i.id} className={`cursor-pointer hover:bg-warmgray-50 ${!i.active ? 'opacity-60' : ''}`} onClick={() => openEdit(i.id)}>
-                <td className="px-4 py-3 font-medium text-warmgray-900">{i.name}</td>
-                <td className="px-4 py-3 text-warmgray-600">{i.category}</td>
-                <td className="px-4 py-3 text-warmgray-600">{i.baseUnit}</td>
-                <td className="px-4 py-3 text-warmgray-600">{trackingTypeLabel[i.trackingType]}</td>
-                <td className="px-4 py-3">
-                  {i.active ? <Badge tone="success">ใช้งานอยู่</Badge> : <Badge tone="neutral">ปิดใช้งาน</Badge>}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </Card>
+      {/* Desktop: grouped tables */}
+      <div className="hidden space-y-4 md:block">
+        {grouped.map(([cat, items]) => (
+          <Card key={cat} className="overflow-hidden p-0">
+            <div className="bg-warmgray-50 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-warmgray-500">
+              {cat} · {items.length} รายการ
+            </div>
+            <table className="w-full text-sm">
+              <thead className="bg-white text-left text-xs uppercase tracking-wide text-warmgray-400">
+                <tr>
+                  <th className="px-4 py-2 font-medium">ชื่อ</th>
+                  <th className="px-4 py-2 font-medium">หน่วยฐาน</th>
+                  <th className="px-4 py-2 font-medium">วิธีติดตาม</th>
+                  <th className="px-4 py-2 font-medium">สถานะ</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-warmgray-100">
+                {items.map((i) => (
+                  <tr key={i.id} className={`cursor-pointer hover:bg-warmgray-50 ${!i.active ? 'opacity-60' : ''}`} onClick={() => openEdit(i.id)}>
+                    <td className="px-4 py-3 font-medium text-warmgray-900">{i.name}</td>
+                    <td className="px-4 py-3 text-warmgray-600">{i.baseUnit}</td>
+                    <td className="px-4 py-3 text-warmgray-600">{trackingTypeLabel[i.trackingType]}</td>
+                    <td className="px-4 py-3">
+                      {i.active ? <Badge tone="success">ใช้งานอยู่</Badge> : <Badge tone="neutral">ปิดใช้งาน</Badge>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </Card>
+        ))}
+        {grouped.length === 0 && <Card className="py-10 text-center text-warmgray-500">ยังไม่มีวัตถุดิบ</Card>}
+      </div>
 
-      {mode !== 'closed' && (
-        <Card>
-          <div className="mb-3 text-sm font-semibold text-warmgray-900">
-            {mode === 'create' ? 'เพิ่มวัตถุดิบใหม่' : 'แก้ไขวัตถุดิบ'}
-          </div>
-          <div className="space-y-3">
+      <Modal
+        open={mode !== 'closed'}
+        onClose={closeForm}
+        title={mode === 'create' ? 'เพิ่มวัตถุดิบใหม่' : 'แก้ไขวัตถุดิบ'}
+        footer={
+          <div className="flex w-full items-center justify-between">
             <div>
-              <label className="mb-1 block text-sm text-warmgray-500">ชื่อวัตถุดิบ</label>
+              {mode === 'edit' && editingId && (
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    const ing = ingredients.find((i) => i.id === editingId);
+                    if (ing) submitToggleIngredientActive(editingId, !ing.active);
+                    closeForm();
+                  }}
+                >
+                  {ingredients.find((i) => i.id === editingId)?.active ? 'ปิดใช้งาน' : 'เปิดใช้งาน'}
+                </Button>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <Button variant="secondary" onClick={closeForm} disabled={saving}>
+                ยกเลิก
+              </Button>
+              <Button onClick={handleSave} disabled={saving}>{saving ? 'กำลังบันทึก...' : 'บันทึก'}</Button>
+            </div>
+          </div>
+        }
+      >
+        <div className="space-y-3">
+          <div>
+            <label className="mb-1 block text-sm text-warmgray-500">ชื่อวัตถุดิบ</label>
+            <input
+              className="min-h-touch w-full rounded-md border border-warmgray-300 px-3 text-[15px]"
+              value={form.name}
+              onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+            />
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div>
+              <label className="mb-1 block text-sm text-warmgray-500">หมวดหมู่</label>
               <input
                 className="min-h-touch w-full rounded-md border border-warmgray-300 px-3 text-[15px]"
-                value={form.name}
-                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                value={form.category}
+                onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}
               />
             </div>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div>
-                <label className="mb-1 block text-sm text-warmgray-500">หมวดหมู่</label>
-                <input
-                  className="min-h-touch w-full rounded-md border border-warmgray-300 px-3 text-[15px]"
-                  value={form.category}
-                  onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm text-warmgray-500">หน่วยฐาน (เช่น g, ml, piece)</label>
-                <input
-                  className="min-h-touch w-full rounded-md border border-warmgray-300 px-3 text-[15px]"
-                  value={form.baseUnit}
-                  onChange={(e) => setForm((f) => ({ ...f, baseUnit: e.target.value }))}
-                />
-              </div>
-            </div>
             <div>
-              <label className="mb-1 block text-sm text-warmgray-500">วิธีติดตามสต๊อก</label>
-              <select
+              <label className="mb-1 block text-sm text-warmgray-500">หน่วยฐาน (เช่น g, ml, piece)</label>
+              <input
                 className="min-h-touch w-full rounded-md border border-warmgray-300 px-3 text-[15px]"
-                value={form.trackingType}
-                onChange={(e) => setForm((f) => ({ ...f, trackingType: e.target.value as TrackingType }))}
-              >
-                {TRACKING_TYPES.map((t) => (
-                  <option key={t} value={t}>
-                    {trackingTypeLabel[t]}
-                  </option>
-                ))}
-              </select>
+                value={form.baseUnit}
+                onChange={(e) => setForm((f) => ({ ...f, baseUnit: e.target.value }))}
+              />
             </div>
-            {form.trackingType === 'standard_cost' && (
-              <div>
-                <label className="mb-1 block text-sm text-warmgray-500">ต้นทุนคงที่ (ต่อหน่วยฐาน)</label>
-                <input
-                  type="number"
-                  className="min-h-touch w-full rounded-md border border-warmgray-300 px-3 text-[15px]"
-                  value={form.standardCost ?? ''}
-                  min={0}
-                  onFocus={(e) => e.target.select()}
-                  onChange={(e) => setForm((f) => ({ ...f, standardCost: e.target.value === '' ? undefined : Number(e.target.value) }))}
-                />
-              </div>
-            )}
+          </div>
+          <div>
+            <label className="mb-1 block text-sm text-warmgray-500">วิธีติดตามสต๊อก</label>
+            <select
+              className="min-h-touch w-full rounded-md border border-warmgray-300 px-3 text-[15px]"
+              value={form.trackingType}
+              onChange={(e) => setForm((f) => ({ ...f, trackingType: e.target.value as TrackingType }))}
+            >
+              {TRACKING_TYPES.map((t) => (
+                <option key={t} value={t}>
+                  {trackingTypeLabel[t]}
+                </option>
+              ))}
+            </select>
+          </div>
+          {form.trackingType === 'standard_cost' && (
             <div>
-              <label className="mb-1 block text-sm text-warmgray-500">เกณฑ์แจ้งเตือนสต๊อกต่ำ (เว้นว่างได้)</label>
+              <label className="mb-1 block text-sm text-warmgray-500">ต้นทุนคงที่ (ต่อหน่วยฐาน)</label>
               <input
                 type="number"
                 className="min-h-touch w-full rounded-md border border-warmgray-300 px-3 text-[15px]"
-                value={form.lowStockThreshold ?? ''}
+                value={form.standardCost ?? ''}
                 min={0}
                 onFocus={(e) => e.target.select()}
-                onChange={(e) => setForm((f) => ({ ...f, lowStockThreshold: e.target.value === '' ? undefined : Number(e.target.value) }))}
+                onChange={(e) => setForm((f) => ({ ...f, standardCost: e.target.value === '' ? undefined : Number(e.target.value) }))}
               />
             </div>
-
-            {errors.length > 0 && (
-              <div className="rounded-md border border-danger-500/40 bg-danger-50/40 p-3 text-sm text-danger-700">
-                {errors.map((e, i) => (
-                  <div key={i}>{e}</div>
-                ))}
-              </div>
-            )}
-
-            <div className="flex items-center justify-between pt-1">
-              <div>
-                {mode === 'edit' && editingId && (
-                  <Button
-                    variant="secondary"
-                    onClick={() => {
-                      const ing = ingredients.find((i) => i.id === editingId);
-                      if (ing) submitToggleIngredientActive(editingId, !ing.active);
-                      closeForm();
-                    }}
-                  >
-                    {ingredients.find((i) => i.id === editingId)?.active ? 'ปิดใช้งาน' : 'เปิดใช้งาน'}
-                  </Button>
-                )}
-              </div>
-              <div className="flex gap-2">
-                <Button variant="secondary" onClick={closeForm} disabled={saving}>
-                  ยกเลิก
-                </Button>
-                <Button onClick={handleSave} disabled={saving}>{saving ? 'กำลังบันทึก...' : 'บันทึก'}</Button>
-              </div>
-            </div>
+          )}
+          <div>
+            <label className="mb-1 block text-sm text-warmgray-500">เกณฑ์แจ้งเตือนสต๊อกต่ำ (เว้นว่างได้)</label>
+            <input
+              type="number"
+              className="min-h-touch w-full rounded-md border border-warmgray-300 px-3 text-[15px]"
+              value={form.lowStockThreshold ?? ''}
+              min={0}
+              onFocus={(e) => e.target.select()}
+              onChange={(e) => setForm((f) => ({ ...f, lowStockThreshold: e.target.value === '' ? undefined : Number(e.target.value) }))}
+            />
           </div>
-        </Card>
-      )}
+          {errors.length > 0 && (
+            <div className="rounded-md border border-danger-500/40 bg-danger-50/40 p-3 text-sm text-danger-700">
+              {errors.map((e, i) => (
+                <div key={i}>{e}</div>
+              ))}
+            </div>
+          )}
+        </div>
+      </Modal>
     </div>
   );
 }
